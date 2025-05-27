@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { useIFCViewerStore } from '@/stores/ifcViewer';
+import { useModelPropertiesStore } from '@/stores/modelProperties';
 import CameraControls from 'camera-controls';
 import * as FRAGS from '@thatopen/fragments';
 import * as OBC from '@thatopen/components';
@@ -22,19 +23,38 @@ const lookAtModel = (model: FRAGS.FragmentsGroup, controls: CameraControls) => {
 
 export function useIFCLoader() {
   const store = useIFCViewerStore();
+  const propertiesStore = useModelPropertiesStore();
 
   const loadIFC = async (file: File) => {
-    if (!store.world || !store.components) return;
+    const { world, components } = store;
+    if (!world || !components) return;
 
     try {
-      const ifcLoader = store.components.get(OBC.IfcLoader);
+      const ifcLoader = components.get(OBC.IfcLoader);
       const arrayBuffer = await file.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
+
       const model = await ifcLoader.load(buffer);
-      store.world.scene.three.add(model);
+      world.scene.three.add(model);
 
       // look at model
-      lookAtModel(model, store.world?.camera.controls as CameraControls);
+      lookAtModel(model, world?.camera.controls as CameraControls);
+
+      // get properties
+      const propsManager = components.get(OBC.IfcPropertiesManager);
+      await propsManager.setData(model);
+      propsManager;
+      const localProperties = await model.getLocalProperties();
+      const propertyTypes = await model.getAllPropertiesTypes();
+      const allProperties = [];
+      for (const propertyType of propertyTypes) {
+        const properties = await model.getAllPropertiesOfType(propertyType);
+        allProperties.push(properties);
+      }
+      console.log(allProperties);
+      if (localProperties) {
+        propertiesStore.setProperties(localProperties as any);
+      }
       return model;
     } catch (error) {
       console.error('Error loading IFC file:', error);
@@ -42,7 +62,43 @@ export function useIFCLoader() {
     }
   };
 
+  const loadIFCNew = async (file: File) => {
+    const { world, components } = store;
+    if (!world || !components) return;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const ifcBytes = new Uint8Array(arrayBuffer);
+
+    // load ifc file to fragments
+    const serializer = new FRAGS.IfcImporter();
+    serializer.wasm = { absolute: true, path: 'https://unpkg.com/web-ifc/' };
+    const fragmentBytes = await serializer.process({ bytes: ifcBytes });
+
+    // initialize fragments models
+    const workerUrl = 'https://thatopen.github.io/engine_fragment/resources/worker.mjs';
+    const fetchedWorker = await fetch(workerUrl);
+    const workerText = await fetchedWorker.text();
+    const workerFile = new File([new Blob([workerText])], 'worker.mjs', {
+      type: 'text/javascript',
+    });
+    const url = URL.createObjectURL(workerFile);
+    const fragments = new FRAGS.FragmentsModels(url);
+    // URL.revokeObjectURL(url);
+    // fragments.baseCoordinates = [0, 0, 0];
+    fragments.settings.graphicsQuality = 1;
+    world.camera.controls?.addEventListener('rest', () => fragments.update(true));
+    world.camera.controls?.addEventListener('update', () => fragments.update());
+
+    // load model into scene
+    const model = await fragments.load(fragmentBytes, { modelId: 'example' });
+    model.useCamera(world.camera.three as THREE.PerspectiveCamera);
+    world.scene.three.add(model.object);
+    store.fragmentsModels = fragments;
+    await fragments.update(true);
+  };
+
   return {
     loadIFC,
+    loadIFCNew,
   };
 }

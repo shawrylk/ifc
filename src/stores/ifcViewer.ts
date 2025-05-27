@@ -1,17 +1,13 @@
+import { IFCViewerState } from '@/types/ifc';
 import * as OBC from '@thatopen/components';
 import * as OBCF from '@thatopen/components-front';
-import type { IFCViewerState } from '@/types/ifc';
 
-interface ExtendedIFCViewerState extends IFCViewerState {
-  currentModel: any | null;
-}
-
+// cannot save to pinia store because of thread-safety issues
 const store = {
   components: null,
   world: null,
   fragmentsModels: null,
   isInitialized: false,
-  currentModel: null,
 
   initialize(container: HTMLElement) {
     if (this.isInitialized) return;
@@ -41,10 +37,6 @@ const store = {
       const grid = grids.create(world);
       world.renderer.postproduction.customEffects.excludedMeshes.push(grid.three);
 
-      // initialize ifc loader
-      const fragmentIfcLoader = components.get(OBC.IfcLoader);
-      fragmentIfcLoader.setup();
-
       // initialize camera
       world.camera.controls?.setLookAt(12, 6, 8, 0, 0, -10);
 
@@ -67,51 +59,11 @@ const store = {
       this.components = null;
       this.world = null;
       this.isInitialized = false;
-      this.currentModel = null;
     }
   },
-
-  // Get model information
-  async getModelInfo(localId: number) {
-    if (!this.currentModel || !localId) return null;
-
-    const [data] = await this.currentModel.getItemsData([localId], {
-      attributesDefault: true,
-    });
-
-    return data;
-  },
-
-  // Get property sets
-  async getPropertySets(localId: number) {
-    if (!this.currentModel || !localId) return null;
-
-    const psets = await this.currentModel.getPropertySets([localId]);
-    return psets;
-  },
-
-  // Get spatial structure
-  async getSpatialStructure() {
-    if (!this.currentModel) return null;
-
-    const structure = await this.currentModel.getSpatialTree();
-    return structure;
-  },
-
-  // Get items by category
-  async getItemsByCategory(category: string) {
-    if (!this.currentModel) return null;
-
-    const items = await this.currentModel.getItemsOfCategory(category);
-    return items;
-  },
-} as ExtendedIFCViewerState & {
+} as IFCViewerState & {
   initialize(container: HTMLElement): void;
   dispose(): void;
-  getModelInfo(localId: number): Promise<any>;
-  getPropertySets(localId: number): Promise<any>;
-  getSpatialStructure(): Promise<any>;
-  getItemsByCategory(category: string): Promise<any>;
 };
 
 export const useIFCViewerStore = () => store;

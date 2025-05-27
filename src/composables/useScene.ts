@@ -16,12 +16,13 @@ export function useScene() {
   };
 
   const handleResize = () => {
-    if (!store.world?.renderer || !container.value) return;
+    const { world } = store;
+    if (!world?.renderer || !container.value) return;
 
-    const camera = store.world.camera.three as THREE.PerspectiveCamera;
+    const camera = world.camera.three as THREE.PerspectiveCamera;
     camera.aspect = container.value.clientWidth / container.value.clientHeight;
     camera.updateProjectionMatrix();
-    store.world.renderer.three.setSize(container.value.clientWidth, container.value.clientHeight);
+    world.renderer.three.setSize(container.value.clientWidth, container.value.clientHeight);
   };
 
   onUnmounted(() => {

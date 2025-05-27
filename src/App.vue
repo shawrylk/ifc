@@ -5,7 +5,7 @@ import IFCViewer from './components/IFCViewer.vue';
 <template>
   <div class="app">
     <header>
-      <h1>IFC Viewer</h1>
+      <h1>DEMO</h1>
     </header>
     <main>
       <IFCViewer />
@@ -22,7 +22,6 @@ import IFCViewer from './components/IFCViewer.vue';
 }
 
 header {
-  padding: 1rem;
   background-color: #2c3e50;
   color: white;
 }
