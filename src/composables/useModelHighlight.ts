@@ -56,11 +56,7 @@ export const useModelHighlight = () => {
       await model.resetHighlight([id]);
     };
 
-    const handleMouseMove = async (
-      event: MouseEvent,
-      model: FRAGS.FragmentsModel,
-      modelName: string
-    ) => {
+    const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
       mouse.x = event.clientX;
       mouse.y = event.clientY;
 
@@ -135,7 +131,7 @@ export const useModelHighlight = () => {
 
     for (const [modelName, model] of fragmentsModels.models.list) {
       // Create bound event handlers
-      const moveHandler = (event: MouseEvent) => handleMouseMove(event, model, modelName);
+      const moveHandler = (event: MouseEvent) => handleMouseMove(event, model);
       const clickHandler = (event: MouseEvent) => handleClick(event, model, modelName);
 
       // Store handlers for cleanup
@@ -191,7 +187,7 @@ export const useModelHighlight = () => {
     const container = world?.renderer?.three.domElement;
 
     // Remove all event listeners
-    eventHandlers.forEach((handlers, modelName) => {
+    eventHandlers.forEach((handlers) => {
       if (container) {
         container.removeEventListener('mousemove', handlers.move);
         container.removeEventListener('click', handlers.click);
