@@ -36,11 +36,88 @@ const handleDisplayChange = (value: boolean) => {
   display.value = value;
 };
 
+const loadTreeData = async () => {
+  const { fragmentsModels } = store;
+  if (!fragmentsModels) return;
+
+  const currentModel = fragmentsModels.models.list.values().next().value;
+  if (!currentModel) return;
+
+  try {
+    // Get spatial structure elements
+    const spatialElements = await currentModel.getSpatialStructure();
+    if (spatialElements) {
+      // Transform the data into a tree structure
+      const transformNode = (rootNode: any) => {
+        interface StackItem {
+          node: any;
+          result: any;
+          parentLabel?: string;
+        }
+        const stack: StackItem[] = [{ node: rootNode, result: null }];
+        const resultMap = new Map<string, any>();
+
+        while (stack.length > 0) {
+          const current = stack.pop();
+          if (!current) continue;
+
+          const { node, result, parentLabel } = current;
+
+          // If node has no localId, just pass its label to children
+          if (!node.localId) {
+            if (node.children && node.children.length > 0) {
+              // Push children to stack with parent's label
+              for (let i = node.children.length - 1; i >= 0; i--) {
+                stack.push({
+                  node: node.children[i],
+                  result: result,
+                  parentLabel: node.category || parentLabel,
+                });
+              }
+            }
+            continue;
+          }
+
+          const transformedNode = {
+            key: node.localId,
+            label: `${node.category || parentLabel} (id: ${node.localId})`,
+            children: [],
+          };
+
+          if (result) {
+            result.children.push(transformedNode);
+          } else {
+            resultMap.set(node.localId, transformedNode);
+          }
+
+          if (node.children && node.children.length > 0) {
+            // Push children to stack in reverse order to maintain original order
+            for (let i = node.children.length - 1; i >= 0; i--) {
+              stack.push({
+                node: node.children[i],
+                result: transformedNode,
+                parentLabel: node.category || parentLabel,
+              });
+            }
+          }
+        }
+
+        return Array.from(resultMap.values());
+      };
+
+      treeData.value = transformNode(spatialElements);
+    }
+  } catch (error) {
+    console.error('Error loading tree data:', error);
+  }
+};
+
 // Expose the display property to parent components
 defineExpose({
   display,
   position,
   handleDisplayChange,
+  loadTreeData,
 });
 
 watch(position, (newValue) => {
@@ -68,99 +145,4 @@ const handleNodeClick = async (item: any) => {
     }
   }
 };
-
-interface SpatialElement {
-  expressID: number;
-  Name?: { value: string };
-  type: string;
-}
-
-const loadTreeData = async () => {
-  const { fragmentsModels } = store;
-  if (!fragmentsModels) return;
-
-  const currentModel = fragmentsModels.models.list.values().next().value;
-  if (!currentModel) return;
-
-  try {
-    // Get spatial structure elements
-    const spatialElements = await modelInfoStore.getItemsByCategory('IfcSpatialStructureElement');
-    if (spatialElements) {
-      // Transform the data into a tree structure
-      const tree = spatialElements.map((item: SpatialElement) => ({
-        id: item.expressID,
-        name: item.Name?.value || 'Unnamed',
-        type: item.type,
-        children: [],
-      }));
-      treeData.value = tree;
-    }
-  } catch (error) {
-    console.error('Error loading tree data:', error);
-  }
-};
-
-watch(
-  () => store.fragmentsModels,
-  (newValue) => {
-    if (newValue) {
-      loadTreeData();
-    } else {
-      treeData.value = [];
-    }
-  },
-  { immediate: true }
-);
 </script>
-
-<style scoped>
-.object-tree {
-  min-height: 300px;
-  max-height: 600px;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.no-data {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100px;
-  color: #666;
-  font-style: italic;
-}
-
-.tree-container {
-  font-size: 14px;
-}
-
-.tree-item {
-  margin: 4px 0;
-}
-
-.tree-node {
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.tree-node:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.tree-node i {
-  margin-right: 8px;
-  font-size: 16px;
-}
-
-.tree-children {
-  margin-left: 24px;
-}
-
-.has-children {
-  font-weight: 500;
-}
-</style>

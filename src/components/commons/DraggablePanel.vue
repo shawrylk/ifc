@@ -9,8 +9,10 @@
     <div class="panel-content">
       <slot></slot>
     </div>
+    <div class="resize-handle resize-handle-w" @mousedown="startResize('w', $event)"></div>
     <div class="resize-handle resize-handle-e" @mousedown="startResize('e', $event)"></div>
     <div class="resize-handle resize-handle-s" @mousedown="startResize('s', $event)"></div>
+    <div class="resize-handle resize-handle-sw" @mousedown="startResize('sw', $event)"></div>
     <div class="resize-handle resize-handle-se" @mousedown="startResize('se', $event)"></div>
   </div>
 </template>
@@ -22,6 +24,7 @@ const props = defineProps<{
   title: string;
   display: boolean;
   position?: { x: number; y: number };
+  size?: { width: number; height: number };
 }>();
 
 const emit = defineEmits<{
@@ -30,12 +33,22 @@ const emit = defineEmits<{
 }>();
 
 const position = ref(props.position || { x: 10, y: 20 });
-const size = ref({ width: 320, height: 400 });
+const size = ref(props.size || { width: 320, height: 400 });
 const isDragging = ref(false);
 const isResizing = ref(false);
-const resizeDirection = ref<'e' | 's' | 'se' | null>(null);
+const resizeDirection = ref<'e' | 'w' | 's' | 'se' | 'sw' | null>(null);
 const dragOffset = ref({ x: 0, y: 0 });
 const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 });
+
+watch(
+  () => props.size,
+  (newSize) => {
+    if (newSize) {
+      size.value = { ...newSize };
+    }
+  },
+  { immediate: true }
+);
 
 // Watch for changes to the position prop
 watch(
@@ -73,7 +86,7 @@ const startDrag = (e: MouseEvent) => {
   document.addEventListener('mouseup', stopDrag);
 };
 
-const startResize = (direction: 'e' | 's' | 'se', e: MouseEvent) => {
+const startResize = (direction: 'e' | 'w' | 's' | 'se' | 'sw', e: MouseEvent) => {
   e.preventDefault();
   e.stopPropagation();
 
@@ -113,6 +126,13 @@ const onResize = (e: MouseEvent) => {
 
   if (resizeDirection.value.includes('e')) {
     size.value.width = Math.max(320, resizeStart.value.width + deltaX);
+  }
+  if (resizeDirection.value.includes('w')) {
+    const newWidth = Math.max(320, resizeStart.value.width - deltaX);
+    const newX = resizeStart.value.x + (resizeStart.value.width - newWidth);
+    size.value.width = newWidth;
+    position.value.x = newX;
+    emit('update:position', position.value);
   }
   if (resizeDirection.value.includes('s')) {
     size.value.height = Math.max(200, resizeStart.value.height + deltaY);
@@ -202,7 +222,6 @@ onUnmounted(() => {
 }
 
 .panel-content {
-  padding: 12px;
   overflow-y: auto;
   overflow-x: auto;
   flex-grow: 1;
@@ -213,6 +232,14 @@ onUnmounted(() => {
   background: transparent;
   z-index: 1001;
   transition: background-color 0.2s;
+}
+
+.resize-handle-w {
+  left: -2px;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  cursor: w-resize;
 }
 
 .resize-handle-e {
@@ -229,6 +256,14 @@ onUnmounted(() => {
   width: 100%;
   height: 4px;
   cursor: s-resize;
+}
+
+.resize-handle-sw {
+  left: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  cursor: sw-resize;
 }
 
 .resize-handle-se {

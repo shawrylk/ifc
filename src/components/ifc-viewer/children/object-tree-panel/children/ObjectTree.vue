@@ -2,37 +2,26 @@
   <div class="object-tree">
     <div v-if="!treeData.length" class="no-data">No IFC model loaded</div>
     <div v-else class="tree-container">
-      <div v-for="(item, index) in treeData" :key="index" class="tree-item">
-        <div
-          class="tree-node"
-          :class="{ 'has-children': item.children?.length }"
-          @click="handleNodeClick(item)"
-        >
-          <i :class="getNodeIcon(item)"></i>
-          <span>{{ item.name }}</span>
-        </div>
-        <div v-if="item.children?.length" class="tree-children">
-          <div v-for="(child, childIndex) in item.children" :key="childIndex" class="tree-item">
-            <div
-              class="tree-node"
-              :class="{ 'has-children': child.children?.length }"
-              @click="handleNodeClick(child)"
-            >
-              <i :class="getNodeIcon(child)"></i>
-              <span>{{ child.name }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ContextMenu ref="cm" :model="menuItems" />
+      <Tree
+        :value="treeData"
+        selectionMode="single"
+        highlightOnSelect
+        @node-select="onNodeSelect"
+        class="w-full md:w-[30rem] gap-0 padding-0"
+        v-model:expandedKeys="expandedKeys"
+        v-model:selectionKeys="selectionKeys"
+        @contextmenu="onContextMenu"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { useIFCViewerStore } from '@/stores/ifcViewer';
-import { useModelInfoStore } from '@/stores/modelInfo';
-import 'primeicons/primeicons.css';
+import { onMounted, ref } from 'vue';
+import Tree from 'primevue/tree';
+import ContextMenu from 'primevue/contextmenu';
+import { TreeNode } from 'primevue/treenode';
 
 const props = defineProps<{
   treeData: any[];
@@ -42,24 +31,88 @@ const emit = defineEmits<{
   (e: 'nodeClick', item: any): void;
 }>();
 
-const getNodeIcon = (item: any) => {
-  if (item.children?.length) {
-    return 'pi pi-folder';
+const cm = ref();
+const selectedNode = ref<any>(null);
+const expandedKeys = ref<{ [key: string]: boolean }>({});
+const selectionKeys = ref<{ [key: string]: boolean }>({});
+
+function collectKeys(nodes: any[]): string[] {
+  let keys: string[] = [];
+  for (const node of nodes) {
+    if (node.key) keys.push(node.key);
+    if (node.children) keys = keys.concat(collectKeys(node.children));
   }
-  return 'pi pi-box';
+  return keys;
+}
+
+const expandAll = () => {
+  const keys = collectKeys(props.treeData);
+  expandedKeys.value = Object.fromEntries(keys.map((key) => [key, true]));
 };
 
-const handleNodeClick = (item: any) => {
-  emit('nodeClick', item);
+const collapseAll = () => {
+  expandedKeys.value = {};
 };
+
+const expandSelected = () => {
+  if (!selectedNode.value) return;
+  const keys = collectKeys([selectedNode.value]);
+  expandedKeys.value = {
+    ...expandedKeys.value,
+    ...Object.fromEntries(keys.map((key) => [key, true])),
+  };
+};
+
+const collapseSelected = () => {
+  if (!selectedNode.value) return;
+  const keys = collectKeys([selectedNode.value]);
+  const newKeys = { ...expandedKeys.value };
+  keys.forEach((key) => delete newKeys[key]);
+  expandedKeys.value = newKeys;
+};
+
+const menuItems = [
+  {
+    label: 'Expand All',
+    icon: 'pi pi-fw pi-plus',
+    command: expandAll,
+  },
+  {
+    label: 'Expand Selected',
+    icon: 'pi pi-fw pi-plus-circle',
+    command: expandSelected,
+  },
+  {
+    label: 'Collapse All',
+    icon: 'pi pi-fw pi-minus',
+    command: collapseAll,
+  },
+  {
+    label: 'Collapse Selected',
+    icon: 'pi pi-fw pi-minus-circle',
+    command: collapseSelected,
+  },
+];
+
+const onNodeSelect = (event: TreeNode) => {
+  selectedNode.value = event;
+  emit('nodeClick', event);
+};
+
+const onContextMenu = (event: any) => {
+  cm.value.show(event);
+};
+
+onMounted(() => {
+  expandAll();
+});
 </script>
 
 <style scoped>
 .object-tree {
-  min-height: 300px;
-  max-height: 600px;
   overflow-y: auto;
-  padding: 8px;
+  padding: 0px;
+  margin: 0px;
 }
 
 .no-data {
@@ -72,36 +125,6 @@ const handleNodeClick = (item: any) => {
 }
 
 .tree-container {
-  font-size: 14px;
-}
-
-.tree-item {
-  margin: 4px 0;
-}
-
-.tree-node {
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.tree-node:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.tree-node i {
-  margin-right: 8px;
-  font-size: 16px;
-}
-
-.tree-children {
-  margin-left: 24px;
-}
-
-.has-children {
-  font-weight: 500;
+  font-size: 12px;
 }
 </style>

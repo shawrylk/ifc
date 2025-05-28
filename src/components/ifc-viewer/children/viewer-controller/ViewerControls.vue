@@ -15,10 +15,12 @@
 <script setup lang="ts">
 import IconButton from '@/components/commons/IconButton.vue';
 import IconFileInput from '@/components/commons/IconFileInput.vue';
+import ObjectTreePanel from '../object-tree-panel/ObjectTreePanel.vue';
+import PropertiesPanel from '../properties-panel/PropertiesPanel.vue';
 
 const props = defineProps<{
-  objectTreePanel: { handleDisplayChange: (value: boolean) => void } | null;
-  propertiesPanel: { handleDisplayChange: (value: boolean) => void } | null;
+  objectTreePanel: InstanceType<typeof ObjectTreePanel> | null;
+  propertiesPanel: InstanceType<typeof PropertiesPanel> | null;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +34,7 @@ const handleFileUpload = (event: Event) => {
 const handleObjectTreeOpen = () => {
   if (props.objectTreePanel) {
     props.objectTreePanel.handleDisplayChange(true);
+    props.objectTreePanel.loadTreeData();
   }
 };
 

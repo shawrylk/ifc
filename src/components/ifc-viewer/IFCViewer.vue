@@ -2,7 +2,11 @@
   <div class="ifc-viewer">
     <div ref="viewerContainer" class="viewer-container"></div>
     <PropertiesPanel ref="propertiesPanel" v-model:position="propertiesPanelPosition" />
-    <ObjectTreePanel ref="objectTreePanel" v-model:position="treePanelPosition" />
+    <ObjectTreePanel
+      ref="objectTreePanel"
+      v-model:position="treePanelPosition"
+      v-model:size="treePanelSize"
+    />
     <ViewerControls
       :objectTreePanel="objectTreePanel"
       :propertiesPanel="propertiesPanel"
@@ -24,11 +28,13 @@ const objectTreePanel = ref<InstanceType<typeof ObjectTreePanel> | null>(null);
 const propertiesPanel = ref<InstanceType<typeof PropertiesPanel> | null>(null);
 
 const treePanelPosition = ref({ x: 10, y: 10 });
+const treePanelSize = ref({ width: 320, height: 400 });
 const propertiesPanelPosition = ref({ x: 10, y: 10 });
 
 onMounted(() => {
   propertiesPanelPosition.value = { x: window.innerWidth - 350, y: 10 };
   treePanelPosition.value = { x: 10, y: 10 };
+  treePanelSize.value = { width: 320, height: window.innerHeight - 100 };
 });
 </script>
 
