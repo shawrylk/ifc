@@ -80,7 +80,6 @@ const columns: OptionsColumns['columns'] = [
 
 onMounted(() => {
   const treeData = [toTabulatorTree(props.object)];
-  console.log(treeData);
   tabulator = new Tabulator(table.value as HTMLElement, {
     dataTree: true,
     data: treeData,
@@ -94,7 +93,6 @@ watch(
   (newObj) => {
     if (tabulator) {
       const treeData = [toTabulatorTree(newObj)];
-      console.log(treeData);
       tabulator.replaceData(treeData);
       tabulator.redraw();
     }
@@ -108,7 +106,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .tabulator-table {
-  width: 100%;
   min-height: 300px;
+  font-size: 12px;
+}
+
+:deep(.tabulator) {
+  font-size: 12px;
+}
+
+:deep(.tabulator-header) {
+  font-size: 12px;
 }
 </style>

@@ -20,6 +20,7 @@
     "tabulator-tables": "^6.3.1",
     "three": "^0.175.0",
     "vue": "^3.5.13",
+    "vue-draggable-next": "^2.2.1",
     "web-ifc": "^0.0.68"
   },
   "devDependencies": {
