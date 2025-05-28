@@ -87,7 +87,9 @@ export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => 
 
     const box = await model.getBoxes([selectedId]);
     const controls = store.world?.camera.controls as CameraControls;
-    controls.fitToBox(box[0], true);
+    if (Number.isFinite(box[0].min.x)) {
+      controls.fitToBox(box[0], true);
+    }
   };
 
   const highlight = async (selectedId: number) => {
