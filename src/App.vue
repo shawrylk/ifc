@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import IFCViewer from './components/IFCViewer.vue';
+import IFCViewer from './components/ifc-viewer/IFCViewer.vue';
 </script>
 
 <template>
   <div class="app">
-    <header>
-      <h1>DEMO</h1>
-    </header>
+    <header></header>
     <main>
       <IFCViewer />
     </main>

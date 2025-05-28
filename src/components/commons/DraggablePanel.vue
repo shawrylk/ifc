@@ -1,7 +1,7 @@
 <template>
   <div v-if="display" class="draggable-panel" :style="panelStyle">
     <div class="panel-header" @mousedown="startDrag">
-      <div class="panel-title">Properties</div>
+      <div class="panel-title">{{ title }}</div>
       <div class="panel-controls">
         <button class="control-btn" @click="close">✕</button>
       </div>
@@ -13,30 +13,40 @@
     <div class="resize-handle resize-handle-s" @mousedown="startResize('s', $event)"></div>
     <div class="resize-handle resize-handle-se" @mousedown="startResize('se', $event)"></div>
   </div>
-  <div v-else class="panel-placeholder">
-    <button class="control-btn" @click="updateDisplay">📖</button>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue';
+import { ref, computed, onUnmounted, watch } from 'vue';
 
 const props = defineProps<{
+  title: string;
   display: boolean;
-  initialPosition?: { x: number; y: number };
+  position?: { x: number; y: number };
 }>();
 
 const emit = defineEmits<{
   (e: 'update:display', value: boolean): void;
+  (e: 'update:position', value: { x: number; y: number }): void;
 }>();
 
-const position = ref(props.initialPosition || { x: 20, y: 20 });
+const position = ref(props.position || { x: 10, y: 20 });
 const size = ref({ width: 320, height: 400 });
 const isDragging = ref(false);
 const isResizing = ref(false);
 const resizeDirection = ref<'e' | 's' | 'se' | null>(null);
 const dragOffset = ref({ x: 0, y: 0 });
 const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 });
+
+// Watch for changes to the position prop
+watch(
+  () => props.position,
+  (newPosition) => {
+    if (newPosition) {
+      position.value = { ...newPosition };
+    }
+  },
+  { immediate: true }
+);
 
 const panelStyle = computed(() => ({
   transform: `translate(${position.value.x}px, ${position.value.y}px)`,
@@ -84,10 +94,12 @@ const onDrag = (e: MouseEvent) => {
   if (!isDragging.value) return;
 
   e.preventDefault();
-  position.value = {
+  const newPosition = {
     x: e.clientX - dragOffset.value.x,
     y: e.clientY - dragOffset.value.y,
   };
+  position.value = newPosition;
+  emit('update:position', newPosition);
 };
 
 const onResize = (e: MouseEvent) => {
@@ -122,10 +134,6 @@ const stopResize = () => {
 
 const close = () => {
   emit('update:display', false);
-};
-
-const updateDisplay = () => {
-  emit('update:display', true);
 };
 
 onUnmounted(() => {
@@ -198,14 +206,6 @@ onUnmounted(() => {
   overflow-y: auto;
   overflow-x: auto;
   flex-grow: 1;
-}
-
-.panel-placeholder {
-  position: absolute;
-  top: 10px;
-  right: 20px;
-  width: 32px;
-  z-index: 1000;
 }
 
 .resize-handle {
