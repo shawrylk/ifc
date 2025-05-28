@@ -52,4 +52,8 @@ const handlePropertiesOpen = () => {
   left: 10px;
   z-index: 100;
 }
+
+.controls-buttons :deep(.pi) {
+  font-size: 1.5rem;
+}
 </style>

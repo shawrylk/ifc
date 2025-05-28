@@ -4,6 +4,7 @@ import { useModelPropertiesStore } from '@/stores/modelProperties';
 import CameraControls from 'camera-controls';
 import * as FRAGS from '@thatopen/fragments';
 import * as OBC from '@thatopen/components';
+import { CameraType } from '@/types/three';
 
 const lookAtModel = (model: FRAGS.FragmentsGroup, controls: CameraControls) => {
   const box = new THREE.Box3().setFromObject(model);
@@ -55,6 +56,14 @@ export function useIFCLoader() {
       if (localProperties) {
         propertiesStore.setProperties(localProperties as any);
       }
+
+      world.camera.controls?.fitToBox(model, true, {
+        cover: true,
+        paddingLeft: 10,
+        paddingRight: 2 * 10,
+        paddingBottom: 10,
+        paddingTop: 2 * 10,
+      });
       return model;
     } catch (error) {
       console.error('Error loading IFC file:', error);
@@ -91,10 +100,24 @@ export function useIFCLoader() {
 
     // load model into scene
     const model = await fragments.load(fragmentBytes, { modelId: 'example' });
-    model.useCamera(world.camera.three as THREE.PerspectiveCamera);
     world.scene.three.add(model.object);
+
+    const camera = world.camera.three as CameraType;
+    model.useCamera(camera);
+
     store.fragmentsModels = fragments;
     await fragments.update(true);
+
+    const controls = world.camera.controls as CameraControls;
+    await controls.fitToBox(model.box, true, {
+      cover: true,
+      paddingLeft: 10,
+      paddingRight: 10,
+      paddingBottom: 10,
+      paddingTop: 10,
+    });
+    // const center = model.box.getCenter(new THREE.Vector3());
+    // await controls.lookInDirectionOf(center.x, center.y, center.z, true);
   };
 
   return {

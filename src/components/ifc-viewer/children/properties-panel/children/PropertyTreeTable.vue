@@ -63,18 +63,22 @@ const columns: OptionsColumns['columns'] = [
   {
     title: 'Name',
     field: 'Name.value',
+    resizable: 'header',
   },
   {
     title: 'Nominal Value',
     field: 'NominalValue.value',
+    resizable: 'header',
   },
   {
     title: 'Object Type',
     field: 'ObjectType.value',
+    resizable: 'header',
   },
   {
     title: 'Predefined Type',
     field: 'PredefinedType.value',
+    resizable: 'header',
   },
 ];
 
@@ -85,6 +89,7 @@ onMounted(() => {
     data: treeData,
     columns,
     dataTreeStartExpanded: true,
+    resizableColumnFit: true,
   });
 });
 
