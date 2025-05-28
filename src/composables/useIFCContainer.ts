@@ -8,6 +8,7 @@ export function useIFCContainer() {
   const { initialize, handleResize, isInitialized } = useScene();
   const { loadIFCNew } = useIFCLoader();
   const modelInfoStore = useModelInfoStore();
+  const { setup, dispose, focusOnSelectedItem, highlightSelectedItem } = useModelInfoStore();
 
   const handleFileUpload = async (event: Event) => {
     if (!isInitialized.value) return;
@@ -18,7 +19,7 @@ export function useIFCContainer() {
     try {
       await loadIFCNew(target.files[0]);
       // Setup model info after model is loaded
-      modelInfoStore.setup();
+      setup();
     } catch (error) {
       console.error('Error loading IFC file:', error);
     }
@@ -33,6 +34,16 @@ export function useIFCContainer() {
       }
     },
     { immediate: true }
+  );
+
+  watch(
+    () => modelInfoStore.selectedId,
+    (newSelectedId: number | null) => {
+      if (newSelectedId !== null) {
+        focusOnSelectedItem(newSelectedId);
+        highlightSelectedItem(newSelectedId);
+      }
+    }
   );
 
   // Handle window resize
@@ -52,7 +63,7 @@ export function useIFCContainer() {
 
   onUnmounted(() => {
     window.removeEventListener('resize', handleResize);
-    modelInfoStore.dispose();
+    dispose();
   });
 
   return {

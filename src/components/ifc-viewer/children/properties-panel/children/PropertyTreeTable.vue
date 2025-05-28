@@ -16,36 +16,30 @@ type TabulatorRow = {
   _children?: TabulatorRow[];
 };
 
-function toTabulatorTree(obj: any, id = 0): TabulatorRow {
+function toTabulatorTree(obj: any): TabulatorRow {
   if (Array.isArray(obj)) {
     return obj.map(toTabulatorTree);
   } else if (obj && typeof obj === 'object') {
     // If this is a { value, type } leaf, return as object
-    if (
-      Object.keys(obj).length === 2 &&
-      'value' in obj &&
-      'type' in obj &&
-      typeof obj.value !== 'object'
-    ) {
-      return { value: obj.value, type: obj.type };
+
+    if ('value' in obj && typeof obj.value !== 'object') {
+      return { value: obj.value, type: obj.type || '' };
     }
 
-    const row: TabulatorRow = { id: id++ };
+    const row: TabulatorRow = {};
     const children: TabulatorRow[] = [];
 
     for (const [key, value] of Object.entries(obj)) {
-      if (!key.startsWith('_')) {
-        if (Array.isArray(value)) {
-          children.push(...value.map((v) => toTabulatorTree(v, id)));
-        } else if (value && typeof value === 'object') {
-          if ('value' in value && 'type' in value) {
-            row[key] = toTabulatorTree(value, id);
-          } else {
-            children.push(toTabulatorTree(value, id));
-          }
+      if (Array.isArray(value)) {
+        children.push(...value.map((v) => toTabulatorTree(v)));
+      } else if (value && typeof value === 'object') {
+        if ('value' in value) {
+          row[key] = toTabulatorTree(value);
         } else {
-          row[key] = value;
+          children.push(toTabulatorTree(value));
         }
+      } else {
+        row[key] = value;
       }
     }
 
@@ -56,10 +50,15 @@ function toTabulatorTree(obj: any, id = 0): TabulatorRow {
     return row;
   }
   // If it's a primitive, wrap it in an object
-  return { id: id++, value: obj };
+  return { value: obj };
 }
 
 const columns: OptionsColumns['columns'] = [
+  {
+    title: 'ID',
+    field: '_localId.value',
+    resizable: 'header',
+  },
   {
     title: 'Name',
     field: 'Name.value',
@@ -89,7 +88,6 @@ onMounted(() => {
     data: treeData,
     columns,
     dataTreeStartExpanded: true,
-    resizableColumnFit: true,
   });
 });
 

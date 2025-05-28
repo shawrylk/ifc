@@ -37,10 +37,5 @@ export function useModelSelection() {
   return {
     onItemSelected,
     onItemDeselected,
-    registerSelectionCallback: callbacksStore.registerSelectionCallback,
-    registerDeselectionCallback: callbacksStore.registerDeselectionCallback,
-    unregisterSelectionCallback: callbacksStore.unregisterSelectionCallback,
-    unregisterDeselectionCallback: callbacksStore.unregisterDeselectionCallback,
-    clearAllCallbacks: callbacksStore.clearAllCallbacks,
   };
 }

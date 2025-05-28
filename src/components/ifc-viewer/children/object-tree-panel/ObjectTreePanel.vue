@@ -79,7 +79,7 @@ const loadTreeData = async () => {
           }
 
           const transformedNode = {
-            key: node.localId,
+            key: `${node.localId}`,
             label: `${node.category || parentLabel} (id: ${node.localId})`,
             children: [],
           };

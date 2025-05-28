@@ -7,6 +7,36 @@ import { useModelSelection } from './useModelSelection';
 
 type EventHandler = (event: MouseEvent) => void;
 
+// Selection highlight material
+const selectionMaterial: FRAGS.MaterialDefinition = {
+  color: new THREE.Color('gold'),
+  renderedFaces: FRAGS.RenderedFaces.TWO,
+  opacity: 1,
+  transparent: false,
+};
+
+// Hover highlight material (paler and more transparent)
+const hoverMaterial: FRAGS.MaterialDefinition = {
+  color: new THREE.Color('gold').multiplyScalar(0.7), // Paler color
+  renderedFaces: FRAGS.RenderedFaces.TWO,
+  opacity: 0.5,
+  transparent: true,
+};
+
+const highlight = async (
+  model: FRAGS.FragmentsModel,
+  id: number,
+  material: FRAGS.MaterialDefinition
+) => {
+  if (!id) return;
+  await model.highlight([id], material);
+};
+
+const resetHighlight = async (model: FRAGS.FragmentsModel, id: number) => {
+  if (!id) return;
+  await model.resetHighlight([id]);
+};
+
 export const useModelHighlight = () => {
   const store = useIFCViewerStore();
   const { onItemSelected, onItemDeselected } = useModelSelection();
@@ -23,38 +53,8 @@ export const useModelHighlight = () => {
     const container = world.renderer?.three.domElement;
     const mouse = new THREE.Vector2();
 
-    // Selection highlight material
-    const selectionMaterial: FRAGS.MaterialDefinition = {
-      color: new THREE.Color('gold'),
-      renderedFaces: FRAGS.RenderedFaces.TWO,
-      opacity: 1,
-      transparent: false,
-    };
-
-    // Hover highlight material (paler and more transparent)
-    const hoverMaterial: FRAGS.MaterialDefinition = {
-      color: new THREE.Color('gold').multiplyScalar(0.7), // Paler color
-      renderedFaces: FRAGS.RenderedFaces.TWO,
-      opacity: 0.5,
-      transparent: true,
-    };
-
     let localId: number | null = null;
     let hoveredId: number | null = null;
-
-    const highlight = async (
-      model: FRAGS.FragmentsModel,
-      id: number,
-      material: FRAGS.MaterialDefinition
-    ) => {
-      if (!id) return;
-      await model.highlight([id], material);
-    };
-
-    const resetHighlight = async (model: FRAGS.FragmentsModel, id: number) => {
-      if (!id) return;
-      await model.resetHighlight([id]);
-    };
 
     const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
       mouse.x = event.clientX;
@@ -126,6 +126,7 @@ export const useModelHighlight = () => {
           onItemDeselected();
         }
       }
+      promises.push(fragmentsModels.update(true));
       await Promise.all(promises);
     };
 
@@ -141,46 +142,24 @@ export const useModelHighlight = () => {
       container?.addEventListener('mousemove', moveHandler);
       container?.addEventListener('click', clickHandler);
     }
-    // // Setup highlighter
-    // highlighter = components.get(OBCF.Highlighter);
-    // highlighter.setup({ world, hoverColor: new THREE.Color(0x5efff7) });
-    // highlighter.zoomToSelection = true;
-
-    // // Setup outliner
-    // outliner = components.get(OBCF.Outliner);
-    // outliner.world = world;
-    // outliner.enabled = true;
-
-    // // Create highlight style
-    // outliner.create(
-    //   'default',
-    //   new THREE.MeshBasicMaterial({
-    //     color: 0xbcf124,
-    //     transparent: true,
-    //     opacity: 0.5,
-    //   })
-    // );
-
-    // // Bind highlighter events to outliner
-    // highlighter.events.select.onHighlight.add((data) => {
-    //   outliner?.clear('default');
-    //   outliner?.add('default', data);
-    // });
-
-    // highlighter.events.select.onClear.add(() => {
-    //   outliner?.clear('default');
-    // });
   };
 
-  // const onSelect = (callback: (data: FragmentIdMap) => void) => {
-  //   if (!highlighter) return;
-  //   highlighter.events.select.onHighlight.add(callback);
-  // };
+  let highlightId: number | null = null;
+  const highlightSelectedItem = async (model: FRAGS.FragmentsModel, localId: number) => {
+    const { world, components, fragmentsModels } = store;
+    if (!components || !world || !fragmentsModels) return;
 
-  // const onDeselect = (callback: () => void) => {
-  //   if (!highlighter) return;
-  //   highlighter.events.select.onClear.add(callback);
-  // };
+    const promises = [];
+    // Reset previous selection
+    if (highlightId) {
+      promises.push(resetHighlight(model, highlightId));
+    }
+
+    highlightId = localId;
+    promises.push(highlight(model, localId, selectionMaterial));
+    promises.push(fragmentsModels.update(true));
+    await Promise.all(promises);
+  };
 
   const dispose = () => {
     const { world } = store;
@@ -200,6 +179,7 @@ export const useModelHighlight = () => {
 
   return {
     setupHighlighting,
+    highlightSelectedItem,
     dispose,
   };
 };

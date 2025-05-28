@@ -3,23 +3,24 @@ import { ref } from 'vue';
 import { useIFCViewerStore } from './ifcViewer';
 import { useModelHighlight } from '@/composables/useModelHighlight';
 import type { Ref } from 'vue';
-import { useModelSelection } from '@/composables/useModelSelection';
+import { useSelectionCallbacksStore } from './selectionCallbacks';
+import CameraControls from 'camera-controls';
 
 interface ModelInfoStore {
   setup: () => void;
   dispose: () => void;
   getModelInfo: (localId: number) => Promise<any | null>;
-  // getPropertySets: (localId: number) => Promise<any | null>;
-  // getSpatialStructure: () => Promise<any | null>;
   getItemsByCategory: (category: string) => Promise<any | null>;
+  focusOnSelectedItem: (selectedId: number) => Promise<void>;
+  highlightSelectedItem: (selectedId: number) => Promise<void>;
   selectedId: Ref<number | null>;
   selectedInfo: Ref<any | null>;
 }
 
 export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => {
   const store = useIFCViewerStore();
-  const { setupHighlighting } = useModelHighlight();
-  const { registerSelectionCallback, registerDeselectionCallback } = useModelSelection();
+  const { setupHighlighting, highlightSelectedItem } = useModelHighlight();
+  const { registerSelectionCallback, registerDeselectionCallback } = useSelectionCallbacksStore();
 
   const selectedId = ref<number | null>(null);
   const selectedInfo = ref<any | null>(null);
@@ -40,22 +41,6 @@ export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => 
 
     return data;
   };
-
-  // const getPropertySets = async (localId: number) => {
-  //   if (!currentModel || !localId) return null;
-
-  //   const psets = await currentModel.getItemsData([localId], {
-  //     properties: true,
-  //   });
-  //   return psets;
-  // };
-
-  // const getSpatialStructure = async () => {
-  //   if (!currentModel) return null;
-
-  //   const structure = await currentModel.getSpatialTree();
-  //   return structure;
-  // };
 
   const getItemsByCategory = async (category: string) => {
     const { fragmentsModels } = store;
@@ -79,10 +64,6 @@ export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => 
       // Get model info
       const info = await getModelInfo(localId);
       selectedInfo.value = info;
-
-      // Get property sets
-      // const psets = await getPropertySets(localId);
-      // selectedPsets.value = psets;
     });
 
     registerDeselectionCallback(() => {
@@ -98,13 +79,32 @@ export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => 
     selectedPsets.value = null;
   };
 
+  const focusOnSelectedItem = async (selectedId: number) => {
+    if (!selectedId) return;
+
+    const model = store.fragmentsModels?.models.list.values().next().value;
+    if (!model) return;
+
+    const box = await model.getBoxes([selectedId]);
+    const controls = store.world?.camera.controls as CameraControls;
+    controls.fitToBox(box[0], true);
+  };
+
+  const highlight = async (selectedId: number) => {
+    if (!selectedId) return;
+
+    const model = store.fragmentsModels?.models.list.values().next().value;
+    if (!model) return;
+    highlightSelectedItem(model, selectedId);
+  };
+
   return {
     setup,
     dispose,
     getModelInfo,
-    // getPropertySets,
-    // getSpatialStructure,
     getItemsByCategory,
+    focusOnSelectedItem,
+    highlightSelectedItem: highlight,
     selectedId,
     selectedInfo,
   };

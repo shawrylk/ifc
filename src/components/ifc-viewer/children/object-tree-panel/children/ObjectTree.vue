@@ -18,13 +18,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { ref, watch } from 'vue';
 import Tree from 'primevue/tree';
 import ContextMenu from 'primevue/contextmenu';
 import { TreeNode } from 'primevue/treenode';
+import { useModelInfoStore } from '@/stores/modelInfo';
 
 const props = defineProps<{
-  treeData: any[];
+  treeData: TreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -32,9 +33,50 @@ const emit = defineEmits<{
 }>();
 
 const cm = ref();
-const selectedNode = ref<any>(null);
+const selectedNode = ref<TreeNode | null>(null);
 const expandedKeys = ref<{ [key: string]: boolean }>({});
 const selectionKeys = ref<{ [key: string]: boolean }>({});
+const modelInfoStore = useModelInfoStore();
+
+const findNode = (node: TreeNode, idString: string): TreeNode | null => {
+  if (node.key == idString) return node;
+  if (!node.children) return null;
+  for (const child of node.children) {
+    const result = findNode(child, idString);
+    if (result) return result;
+  }
+  return null;
+};
+
+watch(
+  () => modelInfoStore.selectedId,
+  (newSelectedId) => {
+    if (!newSelectedId) return;
+    const idString = newSelectedId.toString();
+    if (idString === selectedNode.value?.key) return;
+
+    let foundNode: TreeNode | null = null;
+    for (const rootNode of props.treeData) {
+      foundNode = findNode(rootNode, idString);
+      if (foundNode) break;
+    }
+
+    if (foundNode) {
+      selectedNode.value = foundNode;
+      selectionKeys.value = { [Number(foundNode.key)]: true };
+    } else {
+      selectedNode.value = null;
+      selectionKeys.value = {};
+    }
+  }
+);
+
+watch(
+  () => props.treeData,
+  () => {
+    expandAll();
+  }
+);
 
 function collectKeys(nodes: any[]): string[] {
   let keys: string[] = [];
@@ -94,18 +136,17 @@ const menuItems = [
   },
 ];
 
-const onNodeSelect = (event: TreeNode) => {
-  selectedNode.value = event;
-  emit('nodeClick', event);
+const onNodeSelect = (node: TreeNode) => {
+  selectedNode.value = node;
+  if ('key' in node) {
+    modelInfoStore.selectedId = Number(node.key);
+  }
+  emit('nodeClick', node);
 };
 
 const onContextMenu = (event: any) => {
   cm.value.show(event);
 };
-
-onMounted(() => {
-  expandAll();
-});
 </script>
 
 <style scoped>
