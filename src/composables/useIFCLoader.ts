@@ -108,6 +108,25 @@ export function useIFCLoader() {
     store.fragmentsModels = fragments;
     await fragments.update(true);
 
+    // fix z-fighting
+    const proceedMaterials = new Set<THREE.Material>();
+    let unit = 1;
+    model.object.children.forEach((child) => {
+      child.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const array = Array.isArray(child.material) ? child.material : [child.material];
+          array.forEach((material) => {
+            if (proceedMaterials.has(material)) return;
+            material.polygonOffset = true;
+            material.polygonOffsetFactor = unit;
+            material.polygonOffsetUnits = unit;
+            unit = unit << 1;
+            proceedMaterials.add(material);
+          });
+        }
+      });
+    });
+
     const controls = world.camera.controls as CameraControls;
     await controls.fitToBox(model.box, true, {
       cover: true,
@@ -116,6 +135,7 @@ export function useIFCLoader() {
       paddingBottom: 10,
       paddingTop: 10,
     });
+
     // const center = model.box.getCenter(new THREE.Vector3());
     // await controls.lookInDirectionOf(center.x, center.y, center.z, true);
   };
