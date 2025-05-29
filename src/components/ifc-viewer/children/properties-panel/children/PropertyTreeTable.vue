@@ -9,6 +9,7 @@ import 'tabulator-tables/dist/css/tabulator_midnight.min.css';
 
 const props = defineProps<{ object: any }>();
 const table = ref<HTMLElement | null>(null);
+const isInitialized = ref(false);
 let tabulator: Tabulator | null = null;
 
 type TabulatorRow = {
@@ -89,12 +90,15 @@ onMounted(() => {
     columns,
     dataTreeStartExpanded: true,
   });
+  tabulator.on('tableBuilt', () => {
+    isInitialized.value = true;
+  });
 });
 
 watch(
   () => props.object,
   (newObj) => {
-    if (tabulator) {
+    if (tabulator && isInitialized.value) {
       const treeData = [toTabulatorTree(newObj)];
       tabulator.replaceData(treeData);
       tabulator.redraw();
