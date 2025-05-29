@@ -5,6 +5,7 @@ import { useModelHighlight } from '@/composables/useModelHighlight';
 import type { Ref } from 'vue';
 import { useSelectionCallbacksStore } from './selectionCallbacks';
 import CameraControls from 'camera-controls';
+import * as THREE from 'three';
 
 interface ModelInfoStore {
   setup: () => void;
@@ -88,7 +89,7 @@ export const useModelInfoStore = defineStore('modelInfo', (): ModelInfoStore => 
     const box = await model.getBoxes([selectedId]);
     const controls = store.world?.camera.controls as CameraControls;
     if (Number.isFinite(box[0].min.x)) {
-      controls.fitToBox(box[0], true);
+      controls.fitToSphere(box[0].getBoundingSphere(new THREE.Sphere()), true);
     }
   };
 
