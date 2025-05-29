@@ -140,7 +140,7 @@ export const useModelHighlight = () => {
 
       // Add event listeners
       container?.addEventListener('mousemove', moveHandler);
-      container?.addEventListener('click', clickHandler);
+      container?.addEventListener('mousedown', clickHandler);
     }
   };
 
@@ -169,7 +169,7 @@ export const useModelHighlight = () => {
     eventHandlers.forEach((handlers) => {
       if (container) {
         container.removeEventListener('mousemove', handlers.move);
-        container.removeEventListener('click', handlers.click);
+        container.removeEventListener('mousedown', handlers.click);
       }
     });
 
