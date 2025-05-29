@@ -13,8 +13,8 @@
 import { ref, watch } from 'vue';
 import DraggablePanel from '@/components/commons/DraggablePanel.vue';
 import ObjectTree from './children/ObjectTree.vue';
-import { useIFCViewerStore } from '@/stores/ifcViewer';
-import { useModelInfoStore } from '@/stores/modelInfo';
+import { useInteractionStore } from '@/stores/interactionStore';
+import { useIFCStore } from '@/stores/ifcStore';
 
 const props = defineProps<{
   position?: { x: number; y: number };
@@ -29,15 +29,15 @@ const emit = defineEmits<{
 const display = ref(props.display ?? false);
 const position = ref(props.position || { x: 10, y: 10 });
 const treeData = ref<any[]>([]);
-const store = useIFCViewerStore();
-const modelInfoStore = useModelInfoStore();
+const ifcStore = useIFCStore();
+const interactionStore = useInteractionStore();
 
 const handleDisplayChange = (value: boolean) => {
   display.value = value;
 };
 
 const loadTreeData = async () => {
-  const { fragmentsModels } = store;
+  const fragmentsModels = ifcStore.getFragmentsModels();
   if (!fragmentsModels) return;
 
   const currentModel = fragmentsModels.models.list.values().next().value;
@@ -139,9 +139,9 @@ watch(display, (newValue) => {
 
 const handleNodeClick = async (item: any) => {
   if (item.id) {
-    const info = await modelInfoStore.getModelInfo(item.id);
+    const info = await interactionStore.getModelInfo(ifcStore, item.id);
     if (info) {
-      modelInfoStore.selectedInfo = info;
+      interactionStore.selectedInfo = info;
     }
   }
 };

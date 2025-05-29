@@ -1,11 +1,14 @@
-import * as OBC from '@thatopen/components';
-import * as FRAGS from '@thatopen/fragments';
+import * as THREE from 'three';
+import CameraControls from 'camera-controls';
+import { CameraType } from '@/types/three';
 
-export interface IFCViewerState {
-  components: OBC.Components | null;
-  world: OBC.World | null;
-  fragmentsModels: FRAGS.FragmentsModels | null;
+export interface ThreeState {
+  camera: CameraType;
+  controls: CameraControls;
+  scene: THREE.Scene;
+  renderer: THREE.WebGLRenderer;
   isInitialized: boolean;
+  clock: THREE.Clock;
 }
 
 export interface IFCPropertyValue {
