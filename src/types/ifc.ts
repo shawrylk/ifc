@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import CameraControls from 'camera-controls';
-import { CameraType } from '@/types/three';
 
 export interface ThreeState {
-  camera: CameraType;
-  controls: CameraControls;
+  controls2d: CameraControls;
+  controls3d: CameraControls;
+  activeControls: CameraControls;
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
   isInitialized: boolean;
   clock: THREE.Clock;
+  container: HTMLElement;
+  isPaused: boolean;
 }
 
 export interface IFCPropertyValue {

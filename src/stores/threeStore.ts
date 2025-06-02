@@ -9,13 +9,17 @@ const store: ThreeState & {
   handleResize(viewerContainer: HTMLElement): void;
   dispose(): void;
   render(forceUpdate?: boolean): void;
+  toggleRender(pause: boolean): void;
 } = {
   isInitialized: false,
-  camera: null!,
-  controls: null!,
+  controls2d: null!,
+  controls3d: null!,
+  activeControls: null!,
   scene: null!,
   renderer: null!,
   clock: null!,
+  container: null!,
+  isPaused: false,
 
   initialize: (container: HTMLElement) => {
     if (store.isInitialized) return;
@@ -56,7 +60,15 @@ const store: ThreeState & {
       container.appendChild(renderer.domElement);
 
       // camera
-      const camera = new THREE.PerspectiveCamera(
+      const camera2d = new THREE.OrthographicCamera(
+        -window.innerWidth / 2,
+        window.innerWidth / 2,
+        window.innerHeight / 2,
+        -window.innerHeight / 2,
+        0.1,
+        1000
+      );
+      const camera3d = new THREE.PerspectiveCamera(
         75,
         container.clientWidth / container.clientHeight,
         0.1,
@@ -64,8 +76,12 @@ const store: ThreeState & {
       );
 
       // controls
-      const controls = new CameraControls(camera, renderer.domElement);
-      controls.setLookAt(5, 5, 5, 0, 0, 0);
+      const controls2d = new CameraControls(camera2d, renderer.domElement);
+      controls2d.setLookAt(5, 5, 5, 0, 0, 0);
+      controls2d.mouseButtons.left = CameraControls.ACTION.NONE;
+      controls2d.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
+      const controls3d = new CameraControls(camera3d, renderer.domElement);
+      controls3d.setLookAt(5, 5, 5, 0, 0, 0);
 
       // light
       const ambientLight = new THREE.AmbientLight(0xffffff, 1);
@@ -74,12 +90,14 @@ const store: ThreeState & {
       scene.add(ambientLight);
       scene.add(directionalLight);
 
-      store.isInitialized = true;
-      store.camera = camera;
-      store.controls = controls;
+      store.controls2d = controls2d;
+      store.controls3d = controls3d;
+      store.activeControls = controls3d;
       store.scene = scene;
       store.renderer = renderer;
       store.clock = new THREE.Clock();
+      store.isInitialized = true;
+      store.container = container;
 
       // Initial render
       store.render();
@@ -93,24 +111,33 @@ const store: ThreeState & {
   handleResize: (viewerContainer: HTMLElement) => {
     if (!store.isInitialized) return;
 
-    const camera = store.camera as THREE.PerspectiveCamera;
-    camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
-    camera.updateProjectionMatrix();
+    const camera = store.activeControls.camera;
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
+      camera.updateProjectionMatrix();
+    } else if (camera instanceof THREE.OrthographicCamera) {
+      camera.left = -viewerContainer.clientWidth / 2;
+      camera.right = viewerContainer.clientWidth / 2;
+      camera.top = viewerContainer.clientHeight / 2;
+      camera.bottom = -viewerContainer.clientHeight / 2;
+      camera.updateProjectionMatrix();
+    }
     store.renderer!.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
     store.render();
   },
 
   render: (forceUpdate = false) => {
     if (!store.isInitialized) return;
+    if (store.isPaused) return;
 
     if (forceUpdate) {
-      store.renderer.render(store.scene, store.camera);
+      store.renderer.render(store.scene, store.activeControls.camera);
       return;
     } else {
       const delta = store.clock.getDelta();
-      const hasControlsUpdated = store.controls.update(delta);
+      const hasControlsUpdated = store.activeControls.update(delta);
       if (hasControlsUpdated) {
-        store.renderer.render(store.scene, store.camera);
+        store.renderer.render(store.scene, store.activeControls.camera);
       }
     }
 
@@ -119,10 +146,16 @@ const store: ThreeState & {
     });
   },
 
+  toggleRender: (pause: boolean) => {
+    store.isPaused = pause;
+  },
+
   dispose: () => {
     if (store.renderer) {
-      store.controls.dispose();
+      store.controls2d.dispose();
+      store.controls3d.dispose();
       store.renderer.dispose();
+      store.activeControls = null!;
       store.isInitialized = false;
     }
   },

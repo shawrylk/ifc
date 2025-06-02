@@ -2,14 +2,14 @@ import { FragmentsModels } from '@thatopen/fragments';
 import { useThree } from './threeStore';
 import * as FRAGS from '@thatopen/fragments';
 import * as THREE from 'three';
-import { ref } from 'vue';
+import { ref, markRaw } from 'vue';
 import { defineStore } from 'pinia';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-// cannot use pinia store because of thread-safety issues
 let fragmentsModels: FragmentsModels | null = null;
+// cannot use pinia store because of thread-safety issues
 const loadIFC = async (file: File) => {
-  const { camera, controls, scene } = useThree();
+  const { controls2d, controls3d, scene } = useThree();
 
   const arrayBuffer = await file.arrayBuffer();
   const ifcBytes = new Uint8Array(arrayBuffer);
@@ -27,18 +27,28 @@ const loadIFC = async (file: File) => {
     type: 'text/javascript',
   });
   const url = URL.createObjectURL(workerFile);
-  const fragments = new FRAGS.FragmentsModels(url);
+  const fragments = fragmentsModels ?? markRaw(new FRAGS.FragmentsModels(url));
   // URL.revokeObjectURL(url);
-  fragments.baseCoordinates = [0, 0, 0];
-  fragments.settings.graphicsQuality = 1;
-  controls!.addEventListener('rest', () => fragments.update(true));
-  controls!.addEventListener('update', () => fragments.update());
+  if (fragmentsModels !== fragments) {
+    fragments.baseCoordinates = [0, 0, 0];
+    fragments.settings.graphicsQuality = 1;
+    controls2d!.addEventListener('rest', () => fragments.update(true));
+    controls2d!.addEventListener('update', () => fragments.update());
+    controls3d!.addEventListener('rest', () => fragments.update(true));
+    controls3d!.addEventListener('update', () => fragments.update());
+  } else {
+    // const model = fragments.models.list.values().next().value;
+    // const modelId = model?.modelId;
+    // if (modelId) {
+    //   fragments.disposeModel(modelId);
+    // }
+  }
 
   // load model into scene
   const model = await fragments.load(fragmentBytes, { modelId: file.name });
   scene.add(model.object);
 
-  model.useCamera(camera);
+  model.useCamera(controls3d!.camera);
 
   await fragments.update(true);
 
@@ -77,7 +87,7 @@ const loadIFC = async (file: File) => {
   wireframe.name = 'wireframe';
   model.object.add(wireframe);
 
-  await controls.fitToSphere(model.box.getBoundingSphere(new THREE.Sphere()), true);
+  await controls3d!.fitToSphere(model.box.getBoundingSphere(new THREE.Sphere()), true);
 
   return fragments;
 };

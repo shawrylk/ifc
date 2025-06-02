@@ -15,6 +15,9 @@
     <IconButton title="X-Ray" @click.prevent="handleXRayOpen" :disabled="!ifcStore.isLoaded">
       <i class="pi" :class="{ 'pi-eye-slash': !enableXRay, 'pi-eye': enableXRay }"></i>
     </IconButton>
+    <IconButton title="Show Viewports" @click="handleShowViewports">
+      <i class="pi pi-building"></i>
+    </IconButton>
   </div>
 </template>
 
@@ -29,11 +32,13 @@ import { onUnmounted, ref } from 'vue';
 import * as THREE from 'three';
 import debounce from 'lodash/debounce';
 import { useThree } from '@/stores/threeStore';
+import ViewportPanel from '../viewport/ViewportPanel.vue';
 
 const props = defineProps<{
   objectTreePanel: InstanceType<typeof ObjectTreePanel> | null;
   propertiesPanel: InstanceType<typeof PropertiesPanel> | null;
   planViewsPanel: InstanceType<typeof PlanViewsPanel> | null;
+  viewportPanel: InstanceType<typeof ViewportPanel> | null;
 }>();
 
 const { render } = useThree();
@@ -61,11 +66,11 @@ const handleXRayOpen = debounce(() => {
   render(true);
 }, 100);
 
-const handleFileUpload = async (event: Event) => {
+const handleFileUpload = debounce(async (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (!target.files?.length) return;
   await loadIFCFile(target.files[0]);
-};
+}, 100);
 
 const handleObjectTreeOpen = () => {
   if (props.objectTreePanel) {
@@ -84,6 +89,12 @@ const handlePlanViewsOpen = () => {
   if (props.planViewsPanel) {
     props.planViewsPanel.handleDisplayChange(true);
     props.planViewsPanel.loadPlans();
+  }
+};
+
+const handleShowViewports = () => {
+  if (props.viewportPanel) {
+    props.viewportPanel.handleDisplayChange(true);
   }
 };
 

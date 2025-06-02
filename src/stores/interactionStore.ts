@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { nextTick, ref } from 'vue';
+import { ref } from 'vue';
 import * as THREE from 'three';
 import * as FRAGS from '@thatopen/fragments';
 import type { FragmentIdMap } from '@thatopen/fragments';
@@ -8,13 +8,7 @@ import { useIFCStore } from '@/stores/ifcStore';
 
 // Types
 interface ModelInfo {
-  attributes: Record<string, any>;
-  relations?: {
-    IsDefinedBy?: {
-      attributes: Record<string, any>;
-      relations: Record<string, any>;
-    };
-  };
+  [key: string]: string | number;
 }
 
 interface SelectionData {
@@ -83,18 +77,7 @@ const getModelInfo = async (
   if (!data) return null;
 
   // Transform data to ModelInfo
-  const relations = data.relations as Record<string, any>;
-  return {
-    attributes: data.attributes || {},
-    relations: relations?.IsDefinedBy
-      ? {
-          IsDefinedBy: {
-            attributes: relations.IsDefinedBy.attributes || {},
-            relations: relations.IsDefinedBy.relations || {},
-          },
-        }
-      : undefined,
-  };
+  return data as unknown as Record<string, string | number>;
 };
 
 const focusOnSelectedItem = async (
@@ -109,7 +92,7 @@ const focusOnSelectedItem = async (
 
   const box = await model.getBoxes([selectedId]);
   if (Number.isFinite(box[0].min.x)) {
-    three.controls.fitToSphere(box[0].getBoundingSphere(new THREE.Sphere()), true);
+    three.activeControls.fitToSphere(box[0].getBoundingSphere(new THREE.Sphere()), true);
   }
 };
 
@@ -182,7 +165,7 @@ export const useInteractionStore = defineStore('interaction', () => {
   };
 
   const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
-    const { camera, renderer, render } = three;
+    const { activeControls, renderer, render } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
@@ -209,7 +192,7 @@ export const useInteractionStore = defineStore('interaction', () => {
     }
     rafId.value = requestAnimationFrame(async () => {
       const result = await model.raycast({
-        camera: camera,
+        camera: activeControls.camera,
         mouse,
         dom: container,
       });
@@ -228,12 +211,20 @@ export const useInteractionStore = defineStore('interaction', () => {
           hoveredId.value = newHoveredId;
           promises.push(highlight(model, hoveredId.value, hoverMaterial));
           promises.push(fragmentsModels?.update(true));
+          // change cursor to pointer
+          if (container) {
+            container.style.cursor = 'pointer';
+          }
         }
       } else if (hoveredId.value && hoveredId.value !== highlightId.value) {
         // Reset hover when mouse is not over any element
         promises.push(resetHover(model, hoveredId.value));
         hoveredId.value = null;
         promises.push(fragmentsModels?.update(true));
+        // change cursor to default
+        if (container) {
+          container.style.cursor = 'default';
+        }
       }
 
       await Promise.all(promises);
@@ -246,13 +237,13 @@ export const useInteractionStore = defineStore('interaction', () => {
     model: FRAGS.FragmentsModel,
     modelName: string
   ) => {
-    const { camera, renderer } = three;
+    const { activeControls, renderer } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
 
     const result = await model.raycast({
-      camera: camera,
+      camera: activeControls.camera,
       mouse,
       dom: container,
     });
