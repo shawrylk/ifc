@@ -2,7 +2,7 @@ import { useThree } from '@/stores/threeStore';
 import { FragmentsModel, FragmentsModels, ItemAttribute } from '@thatopen/fragments';
 import { Box3, Sphere } from 'three';
 import * as THREE from 'three';
-import { nextTick } from 'vue';
+import { Viewport, ViewportMode } from './Viewport';
 
 interface BuildingStorey {
   _localId: number;
@@ -67,12 +67,13 @@ export class PlansManager {
     return plans;
   }
 
-  async goTo(planId: number | null) {
+  async goTo(planId: number | null, viewport?: Viewport) {
     const threeStore = useThree();
-    const { render, clock, switchMode } = threeStore;
+    const { clock, mainViewport } = threeStore;
+    const view = viewport ?? mainViewport;
     if (planId) {
-      switchMode('2d');
-      const activeControls = threeStore.activeControls;
+      view?.switchMode(ViewportMode.TWO_D);
+      const controls2d = view?.controls;
       const storey = this._storeys.find((s) => s._localId === planId);
       if (storey) {
         const storeyData = await this._model?.getItemsData([storey._localId]);
@@ -85,31 +86,38 @@ export class PlansManager {
           if (data) {
             const TODO_HARDCODED_UNIT = 1000;
             const elevation = data.Elevation.value / TODO_HARDCODED_UNIT;
-            await activeControls.setLookAt(0, elevation + 0.1, 0, 0, elevation, 0, false);
+            await controls2d?.setLookAt(0, elevation + 0.1, 0, 0, elevation, 0, false);
           }
         }
-        activeControls.dollyToCursor = true;
-        activeControls.update(clock.getDelta());
+        if (controls2d) {
+          controls2d.dollyToCursor = true;
+          controls2d.update(clock.getDelta());
+        }
       }
       console.log(planId);
     } else {
-      switchMode('3d');
-      const activeControls = threeStore.activeControls;
+      view?.switchMode(ViewportMode.THREE_D);
+      const controls3d = view?.controls;
       const items = await this._model?.getItemsByVisibility(false);
       await this._model?.setVisible(items, true);
       const sphere = this._model?.box.getBoundingSphere(new Sphere());
-      if (sphere) {
-        activeControls.fitToSphere(sphere, false);
-        activeControls.update(clock.getDelta());
+      if (sphere && controls3d) {
+        controls3d.fitToSphere(sphere, false);
+        controls3d.update(clock.getDelta());
       }
     }
+    this.forceUpdate(view);
+  }
 
+  private forceUpdate(viewport?: Viewport | null) {
+    const { render, clock, mainViewport } = useThree();
+    const view = viewport ?? mainViewport;
     // cheat: model is not refreshed immediately, so request animation frame 20 times
     let i = 0;
-    const activeControls = threeStore.activeControls;
+    const controls = view?.controls;
     const updateScene = async () => {
-      if (i < 20) {
-        activeControls.update(clock.getDelta());
+      if (i < 20 && controls) {
+        controls.update(clock.getDelta());
         await this._fragmentsModels.update();
         await this._fragmentsModels.update(true);
         render(true);
@@ -118,5 +126,11 @@ export class PlansManager {
       }
     };
     requestAnimationFrame(updateScene);
+  }
+
+  async reset(viewport?: Viewport | null) {
+    const items = await this._model?.getItemsByVisibility(false);
+    await this._model?.setVisible(items, true);
+    this.forceUpdate(viewport);
   }
 }

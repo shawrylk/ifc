@@ -9,7 +9,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 let fragmentsModels: FragmentsModels | null = null;
 // cannot use pinia store because of thread-safety issues
 const loadIFC = async (file: File) => {
-  const { controls2d, controls3d, scene } = useThree();
+  const { mainViewport, scene } = useThree();
 
   const arrayBuffer = await file.arrayBuffer();
   const ifcBytes = new Uint8Array(arrayBuffer);
@@ -32,10 +32,10 @@ const loadIFC = async (file: File) => {
   if (fragmentsModels !== fragments) {
     fragments.baseCoordinates = [0, 0, 0];
     fragments.settings.graphicsQuality = 1;
-    controls2d!.addEventListener('rest', () => fragments.update(true));
-    controls2d!.addEventListener('update', () => fragments.update());
-    controls3d!.addEventListener('rest', () => fragments.update(true));
-    controls3d!.addEventListener('update', () => fragments.update());
+    [mainViewport?.controls2d, mainViewport?.controls3d].forEach((control) => {
+      control?.addEventListener('rest', () => fragments.update(true));
+      control?.addEventListener('update', () => fragments.update());
+    });
   } else {
     // const model = fragments.models.list.values().next().value;
     // const modelId = model?.modelId;
@@ -48,7 +48,10 @@ const loadIFC = async (file: File) => {
   const model = await fragments.load(fragmentBytes, { modelId: file.name });
   scene.add(model.object);
 
-  model.useCamera(controls3d!.camera);
+  const camera3d = mainViewport?.controls3d?.camera;
+  if (camera3d) {
+    model.useCamera(camera3d);
+  }
 
   await fragments.update(true);
 
@@ -87,7 +90,11 @@ const loadIFC = async (file: File) => {
   wireframe.name = 'wireframe';
   model.object.add(wireframe);
 
-  await controls3d!.fitToSphere(model.box.getBoundingSphere(new THREE.Sphere()), true);
+  const sphere = model.box.getBoundingSphere(new THREE.Sphere());
+  const controls3d = mainViewport?.controls3d;
+  if (controls3d) {
+    await controls3d.fitToSphere(sphere, true);
+  }
 
   return fragments;
 };

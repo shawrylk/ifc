@@ -92,7 +92,7 @@ const focusOnSelectedItem = async (
 
   const box = await model.getBoxes([selectedId]);
   if (Number.isFinite(box[0].min.x)) {
-    three.activeControls.fitToSphere(box[0].getBoundingSphere(new THREE.Sphere()), true);
+    three.mainViewport?.controls3d.fitToSphere(box[0].getBoundingSphere(new THREE.Sphere()), true);
   }
 };
 
@@ -165,7 +165,7 @@ export const useInteractionStore = defineStore('interaction', () => {
   };
 
   const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
-    const { activeControls, renderer, render } = three;
+    const { mainViewport, renderer, render } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
@@ -191,8 +191,10 @@ export const useInteractionStore = defineStore('interaction', () => {
       cancelAnimationFrame(rafId.value);
     }
     rafId.value = requestAnimationFrame(async () => {
+      const camera = mainViewport?.camera;
+      if (!camera) return;
       const result = await model.raycast({
-        camera: activeControls.camera,
+        camera,
         mouse,
         dom: container,
       });
@@ -237,13 +239,15 @@ export const useInteractionStore = defineStore('interaction', () => {
     model: FRAGS.FragmentsModel,
     modelName: string
   ) => {
-    const { activeControls, renderer } = three;
+    const { mainViewport, renderer } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
 
+    const camera = mainViewport?.camera;
+    if (!camera) return;
     const result = await model.raycast({
-      camera: activeControls.camera,
+      camera,
       mouse,
       dom: container,
     });

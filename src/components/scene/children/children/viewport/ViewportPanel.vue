@@ -24,10 +24,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick, shallowRef } from 'vue';
 import DraggablePanel from '@/components/commons/DraggablePanel.vue';
 import * as THREE from 'three';
-import { Viewport } from '../../../../../composables/Viewport';
+import { Viewport } from '@/composables/Viewport';
 import { markRaw } from 'vue';
 import { useThree } from '@/stores/threeStore';
 import PlanViewsList from '../plan-views-panel/children/PlanViewsList.vue';
@@ -55,13 +55,12 @@ const display = ref(props.display ?? false);
 const position = ref(props.position ?? { x: 10, y: 10 });
 const size = ref(props.size ?? { width: 1400, height: 900 });
 const rendererCanvas = ref<HTMLCanvasElement | null>(null);
-const viewports = ref<Viewport[]>([]);
+const viewports = shallowRef<Viewport[]>([]);
 const isRendering = ref(true);
-const clock = new THREE.Clock();
-const controlsEnabled = ref<boolean[]>([]);
 const plansManager = ref<PlansManager | null>(null);
 const plans = ref<any[]>([]);
 const visiblePlanId = ref<number | null>(null);
+const clock = new THREE.Clock();
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
@@ -76,36 +75,36 @@ const handleDisplayChange = (value: boolean) => {
 };
 
 const cleanup = () => {
+  const { mainViewport } = useThree();
   stopRendering();
+  viewports.value.forEach((viewport) => plansManager.value?.reset(viewport));
+  plansManager.value?.reset(mainViewport);
 
   // Dispose all viewports
   viewports.value.forEach((viewport) => viewport.dispose());
   viewports.value = [];
-  controlsEnabled.value = [];
 };
 
 const resetRenderer = () => {
-  const { container, renderer, render, toggleRender } = useThree();
+  const { container, renderer, render, setRender } = useThree();
   if (container) {
-    toggleRender(false);
+    setRender(false);
     // reset scissor test
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, container.clientWidth, container.clientHeight);
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
-    // first, for re-render
     render(true);
-    // second, start rendering loop
-    render();
   }
 };
 
 const render = () => {
   if (!isRendering.value) return;
 
+  // Calculate delta once per frame
   const delta = clock.getDelta();
 
-  // Render each viewport
+  // Render each viewport with the same delta
   viewports.value.forEach((viewport) => {
     if (viewport) {
       viewport.render(delta);
@@ -142,8 +141,8 @@ const initRenderer = async () => {
   // Clean up any existing renderer and viewports
   cleanup();
 
-  const { renderer, toggleRender } = useThree();
-  toggleRender(true);
+  const { renderer, setRender } = useThree();
+  setRender(true);
   // Only append if not already in the canvas
   if (!rendererCanvas.value.contains(renderer.domElement)) {
     rendererCanvas.value.appendChild(renderer.domElement);
@@ -158,7 +157,6 @@ const initRenderer = async () => {
       container: rendererCanvas.value!,
     });
     viewports.value.push(markRaw(viewport));
-    controlsEnabled.value.push(false);
   });
 
   // Start rendering
@@ -202,6 +200,14 @@ watch(
   },
   { deep: true }
 );
+
+watch(visiblePlanId, async (newPlanId) => {
+  if (plansManager.value) {
+    await Promise.all(
+      viewports.value.map((viewport) => plansManager.value?.goTo(newPlanId, viewport))
+    );
+  }
+});
 
 onUnmounted(() => {
   cleanup();

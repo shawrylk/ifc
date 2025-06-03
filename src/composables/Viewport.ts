@@ -9,6 +9,7 @@ export interface ViewportConfig {
   region: { x: number; y: number; width: number; height: number };
   controlsTarget?: HTMLElement | null;
   container: HTMLElement;
+  defaultMode?: ViewportMode;
 }
 
 export enum ViewportMode {
@@ -17,11 +18,11 @@ export enum ViewportMode {
 }
 
 export class Viewport {
-  private mode: ViewportMode = ViewportMode.TWO_D;
-  private camera2d: THREE.OrthographicCamera | null = null;
-  private camera3d: THREE.PerspectiveCamera | null = null;
-  private controls2d: CameraControls | null = null;
-  private controls3d: CameraControls | null = null;
+  private mode: ViewportMode;
+  private readonly camera2d: THREE.OrthographicCamera;
+  private readonly camera3d: THREE.PerspectiveCamera;
+  public readonly controls2d: CameraControls;
+  public readonly controls3d: CameraControls;
   private container: HTMLElement;
   private scene: THREE.Scene;
   private region: { x: number; y: number; width: number; height: number };
@@ -29,45 +30,29 @@ export class Viewport {
   private isDisposed: boolean = false;
 
   constructor(config: ViewportConfig) {
+    this.mode = config.defaultMode ?? ViewportMode.TWO_D;
     this.container = config.container;
     this.scene = useThree().scene;
-    this.createCameras(config.region);
-    this.createControls(config);
-    this.region = config.region;
-    this.renderer = config.renderer;
-    window.addEventListener('resize', this.handleResize);
-    this.handleResize(); // Initial size setup
-  }
-
-  private createCameras(region: typeof this.region) {
-    const aspect = region.width / region.height;
-
-    // Create 2D camera
+    // 2D camera
     this.camera2d = new THREE.OrthographicCamera(
-      region.width / -2,
-      region.width / 2,
-      region.height / 2,
-      region.height / -2,
+      config.region.width / -2,
+      config.region.width / 2,
+      config.region.height / 2,
+      config.region.height / -2,
       0.1,
       1000
     );
-
-    // Create 3D camera
-    this.camera3d = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-  }
-
-  private createControls(config: ViewportConfig) {
-    if (!this.camera2d || !this.camera3d) return;
-
-    // Dispose old controls if target changed
-    if (this.controls2d) this.controls2d.dispose();
-    if (this.controls3d) this.controls3d.dispose();
-
+    // 3D camera
+    this.camera3d = new THREE.PerspectiveCamera(
+      75,
+      config.region.width / config.region.height,
+      0.1,
+      1000
+    );
+    // 2D controls
     this.controls2d = new CameraControls(this.camera2d, this.container);
     this.controls2d.mouseButtons.left = CameraControls.ACTION.NONE;
     this.controls2d.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
-
-    this.controls3d = new CameraControls(this.camera3d, this.container);
 
     const position = config.initialPosition || { x: 5, y: 5, z: 5 };
     const targetPos = config.initialTarget || { x: 0, y: 0, z: 0 };
@@ -88,6 +73,8 @@ export class Viewport {
       true
     );
 
+    // 3D controls
+    this.controls3d = new CameraControls(this.camera3d, this.container);
     this.controls3d.setLookAt(
       position.x,
       position.y,
@@ -96,6 +83,11 @@ export class Viewport {
       targetPos.y,
       targetPos.z
     );
+
+    this.region = config.region;
+    this.renderer = config.renderer;
+    this.container.addEventListener('resize', this.handleResize);
+    this.handleResize(); // Initial size setup
   }
 
   private handleResize = () => {
@@ -124,31 +116,30 @@ export class Viewport {
     const activeCamera = this.mode === ViewportMode.TWO_D ? this.camera2d : this.camera3d;
 
     if (activeControls && activeCamera) {
-      const hasControlsUpdated = activeControls.update(delta);
-      if (hasControlsUpdated) {
-        // Get offset of container relative to renderer's canvas
-        const containerRect = this.container.getBoundingClientRect();
-        const canvasRect = this.renderer.domElement.getBoundingClientRect();
-        const offsetX = containerRect.left - canvasRect.left;
-        const offsetY = containerRect.top - canvasRect.top;
+      // Get offset of container relative to renderer's canvas
+      const containerRect = this.container.getBoundingClientRect();
+      const canvasRect = this.renderer.domElement.getBoundingClientRect();
+      const offsetX = containerRect.left - canvasRect.left;
+      const offsetY = containerRect.top - canvasRect.top;
 
-        const { x, y, width, height } = this.region;
-        // Flip y for Three.js (canvas y=0 is top, Three.js y=0 is bottom)
-        const flippedY = this.renderer.domElement.height - (y + offsetY) - height;
+      const { x, y, width, height } = this.region;
+      // Flip y for Three.js (canvas y=0 is top, Three.js y=0 is bottom)
+      const flippedY = this.renderer.domElement.height - (y + offsetY) - height;
 
-        this.renderer.setViewport(x + offsetX, flippedY, width, height);
-        this.renderer.setScissor(x + offsetX, flippedY, width, height);
-        this.renderer.setScissorTest(true);
+      this.renderer.setViewport(x + offsetX, flippedY, width, height);
+      this.renderer.setScissor(x + offsetX, flippedY, width, height);
+      this.renderer.setScissorTest(true);
 
-        // Render the scene
-        this.renderer.render(this.scene, activeCamera);
-      }
+      // Render the scene
+      activeControls.update(delta);
+      // Always render the scene
+      this.renderer.render(this.scene, activeCamera);
     }
   }
 
-  public toggleMode() {
-    if (this.isDisposed) return;
-    this.mode = this.mode === ViewportMode.THREE_D ? ViewportMode.TWO_D : ViewportMode.THREE_D;
+  public switchMode(mode: ViewportMode) {
+    this.mode = mode;
+    this.controls.camera.updateProjectionMatrix();
   }
 
   public updateRegion(region: { x: number; y: number; width: number; height: number }) {
@@ -162,18 +153,18 @@ export class Viewport {
     this.isDisposed = true;
     if (this.controls2d) {
       this.controls2d.dispose();
-      this.controls2d = null;
     }
     if (this.controls3d) {
       this.controls3d.dispose();
-      this.controls3d = null;
-    }
-    if (this.camera2d) {
-      this.camera2d = null;
-    }
-    if (this.camera3d) {
-      this.camera3d = null;
     }
     window.removeEventListener('resize', this.handleResize);
+  }
+
+  public get controls() {
+    return this.mode === ViewportMode.TWO_D ? this.controls2d : this.controls3d;
+  }
+
+  public get camera() {
+    return this.mode === ViewportMode.TWO_D ? this.camera2d : this.camera3d;
   }
 }

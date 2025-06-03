@@ -1,10 +1,6 @@
 import * as THREE from 'three';
-import CameraControls from 'camera-controls';
 
 export interface ThreeState {
-  controls2d: CameraControls;
-  controls3d: CameraControls;
-  activeControls: CameraControls;
   scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
   isInitialized: boolean;

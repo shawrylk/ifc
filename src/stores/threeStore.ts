@@ -1,30 +1,44 @@
-import { ThreeState } from '@/types/ifc';
 import * as THREE from 'three';
-import CameraControls from 'camera-controls';
 import InfiniteGridHelper from '@/composables/InfiniteGridHelper';
+import { Viewport, ViewportMode } from '@/composables/Viewport';
 
 export type ViewMode = '2d' | '3d';
 
-// cannot save to pinia store because of thread-safety issues
-const store: ThreeState & {
+// Define a new type for the store that omits controls2d, controls3d, and activeControls
+// since these are now managed by the mainViewport
+interface ThreeStoreState {
+  isInitialized: boolean;
+  scene: THREE.Scene;
+  renderer: THREE.WebGLRenderer;
+  clock: THREE.Clock;
+  container: HTMLElement;
+  isPaused: boolean;
   mode: ViewMode;
-  switchMode: (mode: ViewMode) => void;
+  mainViewport: Viewport | null;
   initialize(container: HTMLElement): void;
   handleResize(viewerContainer: HTMLElement): void;
   dispose(): void;
   render(forceUpdate?: boolean): void;
-  toggleRender(pause: boolean): void;
-} = {
+  setRender(pause: boolean): void;
+}
+
+const startRenderLoop = () => {
+  if (!store.isInitialized || !store.mainViewport) return;
+  requestAnimationFrame(() => {
+    store.render();
+    startRenderLoop();
+  });
+};
+
+const store: ThreeStoreState = {
   isInitialized: false,
-  controls2d: null!,
-  controls3d: null!,
-  activeControls: null!,
   scene: null!,
   renderer: null!,
   clock: null!,
   container: null!,
   isPaused: false,
   mode: '3d',
+  mainViewport: null,
 
   initialize: (container: HTMLElement) => {
     if (store.isInitialized) return;
@@ -64,30 +78,6 @@ const store: ThreeState & {
       renderer.setSize(container.clientWidth, container.clientHeight);
       container.appendChild(renderer.domElement);
 
-      // camera
-      const camera2d = new THREE.OrthographicCamera(
-        -window.innerWidth / 2,
-        window.innerWidth / 2,
-        window.innerHeight / 2,
-        -window.innerHeight / 2,
-        0.1,
-        1000
-      );
-      const camera3d = new THREE.PerspectiveCamera(
-        75,
-        container.clientWidth / container.clientHeight,
-        0.1,
-        1000
-      );
-
-      // controls
-      const controls2d = new CameraControls(camera2d, renderer.domElement);
-      controls2d.setLookAt(5, 5, 5, 0, 0, 0);
-      controls2d.mouseButtons.left = CameraControls.ACTION.NONE;
-      controls2d.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
-      const controls3d = new CameraControls(camera3d, renderer.domElement);
-      controls3d.setLookAt(5, 5, 5, 0, 0, 0);
-
       // light
       const ambientLight = new THREE.AmbientLight(0xffffff, 1);
       const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -95,17 +85,28 @@ const store: ThreeState & {
       scene.add(ambientLight);
       scene.add(directionalLight);
 
-      store.controls2d = controls2d;
-      store.controls3d = controls3d;
-      store.activeControls = controls3d;
       store.scene = scene;
       store.renderer = renderer;
       store.clock = new THREE.Clock();
       store.isInitialized = true;
       store.container = container;
 
-      // Initial render
-      store.render();
+      // Create the main viewport for the main app
+      store.mainViewport = new Viewport({
+        renderer: renderer,
+        region: {
+          x: 0,
+          y: 0,
+          width: container.clientWidth,
+          height: container.clientHeight,
+        },
+        container: container,
+        initialPosition: new THREE.Vector3(5, 5, 5),
+        initialTarget: new THREE.Vector3(0, 0, 0),
+        defaultMode: ViewportMode.THREE_D,
+      });
+
+      startRenderLoop();
     } catch (error) {
       console.error('Error initializing IFC viewer:', error);
       store.dispose();
@@ -114,67 +115,41 @@ const store: ThreeState & {
   },
 
   handleResize: (viewerContainer: HTMLElement) => {
-    if (!store.isInitialized) return;
-
-    const camera = store.activeControls.camera;
-    if (camera instanceof THREE.PerspectiveCamera) {
-      camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
-      camera.updateProjectionMatrix();
-    } else if (camera instanceof THREE.OrthographicCamera) {
-      camera.left = -viewerContainer.clientWidth / 2;
-      camera.right = viewerContainer.clientWidth / 2;
-      camera.top = viewerContainer.clientHeight / 2;
-      camera.bottom = -viewerContainer.clientHeight / 2;
-      camera.updateProjectionMatrix();
-    }
+    if (!store.isInitialized || !store.mainViewport) return;
     store.renderer!.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
-    store.render();
+    store.mainViewport.updateRegion({
+      x: 0,
+      y: 0,
+      width: viewerContainer.clientWidth,
+      height: viewerContainer.clientHeight,
+    });
+    store.render(true);
   },
 
   render: (forceUpdate = false) => {
-    if (!store.isInitialized) return;
+    if (!store.isInitialized || !store.mainViewport) return;
     if (store.isPaused) return;
 
-    if (forceUpdate) {
-      store.renderer.render(store.scene, store.activeControls.camera);
-      return;
-    } else {
-      const delta = store.clock.getDelta();
-      const hasControlsUpdated = store.activeControls.update(delta);
-      if (hasControlsUpdated) {
-        store.renderer.render(store.scene, store.activeControls.camera);
-      }
+    const delta = store.clock.getDelta();
+    const hasControlsUpdated = store.mainViewport.controls.update(delta);
+    if (hasControlsUpdated) {
+      store.mainViewport.render(store.clock.getDelta());
+    } else if (forceUpdate) {
+      store.mainViewport.render(store.clock.getDelta());
     }
-
-    requestAnimationFrame(() => {
-      store.render();
-    });
   },
 
-  toggleRender: (pause: boolean) => {
+  setRender: (pause: boolean) => {
     store.isPaused = pause;
-  },
-
-  switchMode: (mode: ViewMode) => {
-    if (mode === '2d') {
-      store.activeControls = store.controls2d;
-    } else {
-      store.activeControls = store.controls3d;
-    }
-    store.mode = mode;
-    // Update projection matrix if needed
-    if (store.activeControls && store.activeControls.camera) {
-      store.activeControls.camera.updateProjectionMatrix();
-    }
-    store.render(true);
   },
 
   dispose: () => {
     if (store.renderer) {
-      store.controls2d.dispose();
-      store.controls3d.dispose();
+      if (store.mainViewport) {
+        store.mainViewport.dispose();
+        store.mainViewport = null;
+      }
       store.renderer.dispose();
-      store.activeControls = null!;
       store.isInitialized = false;
     }
   },
