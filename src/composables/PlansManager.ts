@@ -2,6 +2,7 @@ import { useThree } from '@/stores/threeStore';
 import { FragmentsModel, FragmentsModels, ItemAttribute } from '@thatopen/fragments';
 import { Box3, Sphere } from 'three';
 import * as THREE from 'three';
+import { nextTick } from 'vue';
 
 interface BuildingStorey {
   _localId: number;
@@ -76,9 +77,9 @@ export class PlansManager {
       if (storey) {
         const storeyData = await this._model?.getItemsData([storey._localId]);
         if (storeyData) {
-          const children = await this._model?.getItemsChildren([storey._localId]);
           const items = await this._model?.getItemsByVisibility(true);
           await this._model?.setVisible(items, false);
+          const children = await this._model?.getItemsChildren([storey._localId]);
           await this._model?.setVisible(children, true);
           const data = storeyData[0] as unknown as PlanData;
           if (data) {
@@ -93,9 +94,9 @@ export class PlansManager {
       console.log(planId);
     } else {
       switchMode('3d');
+      const activeControls = threeStore.activeControls;
       const items = await this._model?.getItemsByVisibility(false);
       await this._model?.setVisible(items, true);
-      const activeControls = threeStore.activeControls;
       const sphere = this._model?.box.getBoundingSphere(new Sphere());
       if (sphere) {
         activeControls.fitToSphere(sphere, false);
@@ -103,7 +104,19 @@ export class PlansManager {
       }
     }
 
-    await this._fragmentsModels.update();
-    render(true);
+    // cheat: model is not refreshed immediately, so request animation frame 20 times
+    let i = 0;
+    const activeControls = threeStore.activeControls;
+    const updateScene = async () => {
+      if (i < 20) {
+        activeControls.update(clock.getDelta());
+        await this._fragmentsModels.update();
+        await this._fragmentsModels.update(true);
+        render(true);
+        i++;
+        requestAnimationFrame(updateScene);
+      }
+    };
+    requestAnimationFrame(updateScene);
   }
 }
