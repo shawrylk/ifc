@@ -284,7 +284,6 @@ export const useInteractionStore = defineStore('interaction', () => {
     for (const [modelName, model] of fragmentsModels?.models.list ?? []) {
       if (!model || !(model instanceof FRAGS.FragmentsModel)) continue;
 
-      let isDragging = false;
       let startX = 0;
       let startY = 0;
       const DRAG_THRESHOLD = 5; // pixels
@@ -303,7 +302,6 @@ export const useInteractionStore = defineStore('interaction', () => {
       mouseDownHandler = (event: MouseEvent) => {
         startX = event.clientX;
         startY = event.clientY;
-        isDragging = false;
       };
 
       mouseUpHandler = (event: MouseEvent) => {
