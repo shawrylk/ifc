@@ -3,8 +3,12 @@ import * as THREE from 'three';
 import CameraControls from 'camera-controls';
 import InfiniteGridHelper from '@/composables/InfiniteGridHelper';
 
+export type ViewMode = '2d' | '3d';
+
 // cannot save to pinia store because of thread-safety issues
 const store: ThreeState & {
+  mode: ViewMode;
+  switchMode: (mode: ViewMode) => void;
   initialize(container: HTMLElement): void;
   handleResize(viewerContainer: HTMLElement): void;
   dispose(): void;
@@ -20,6 +24,7 @@ const store: ThreeState & {
   clock: null!,
   container: null!,
   isPaused: false,
+  mode: '3d',
 
   initialize: (container: HTMLElement) => {
     if (store.isInitialized) return;
@@ -148,6 +153,20 @@ const store: ThreeState & {
 
   toggleRender: (pause: boolean) => {
     store.isPaused = pause;
+  },
+
+  switchMode: (mode: ViewMode) => {
+    if (mode === '2d') {
+      store.activeControls = store.controls2d;
+    } else {
+      store.activeControls = store.controls3d;
+    }
+    store.mode = mode;
+    // Update projection matrix if needed
+    if (store.activeControls && store.activeControls.camera) {
+      store.activeControls.camera.updateProjectionMatrix();
+    }
+    store.render(true);
   },
 
   dispose: () => {

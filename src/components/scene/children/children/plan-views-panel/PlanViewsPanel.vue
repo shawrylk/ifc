@@ -59,12 +59,12 @@ const loadPlans = async () => {
   }
 };
 
-const handlePlanClick = (planId: number | null) => {
+const handlePlanClick = async (planId: number | null) => {
   const plansManager = loadPlansManager();
   if (!plansManager) return;
 
   try {
-    plansManager.goTo(planId);
+    await plansManager.goTo(planId);
   } catch (error) {
     console.error('Error navigating to plan:', error);
   }

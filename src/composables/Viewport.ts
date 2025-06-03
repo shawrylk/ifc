@@ -3,8 +3,8 @@ import CameraControls from 'camera-controls';
 import { useThree } from '@/stores/threeStore';
 
 export interface ViewportConfig {
-  initialPosition?: { x: number; y: number; z: number };
-  initialTarget?: { x: number; y: number; z: number };
+  initialPosition?: THREE.Vector3;
+  initialTarget?: THREE.Vector3;
   renderer: THREE.WebGLRenderer;
   region: { x: number; y: number; width: number; height: number };
   controlsTarget?: HTMLElement | null;
@@ -31,7 +31,7 @@ export class Viewport {
   constructor(config: ViewportConfig) {
     this.container = config.container;
     this.scene = useThree().scene;
-    this.createCameras();
+    this.createCameras(config.region);
     this.createControls(config);
     this.region = config.region;
     this.renderer = config.renderer;
@@ -39,15 +39,15 @@ export class Viewport {
     this.handleResize(); // Initial size setup
   }
 
-  private createCameras() {
-    const aspect = this.container.clientWidth / this.container.clientHeight;
+  private createCameras(region: typeof this.region) {
+    const aspect = region.width / region.height;
 
     // Create 2D camera
     this.camera2d = new THREE.OrthographicCamera(
-      this.container.clientWidth / -2,
-      this.container.clientWidth / 2,
-      this.container.clientHeight / 2,
-      this.container.clientHeight / -2,
+      region.width / -2,
+      region.width / 2,
+      region.height / 2,
+      region.height / -2,
       0.1,
       1000
     );
@@ -80,7 +80,9 @@ export class Viewport {
       targetPos.y,
       targetPos.z
     );
-    const size = 5;
+    const size = (config.initialPosition ?? new THREE.Vector3()).distanceTo(
+      config.initialTarget ?? new THREE.Vector3()
+    );
     this.controls2d.fitToBox(
       new THREE.Box3(new THREE.Vector3(-size, -size, -size), new THREE.Vector3(size, size, size)),
       true
@@ -99,13 +101,13 @@ export class Viewport {
   private handleResize = () => {
     if (this.isDisposed) return;
 
-    const aspect = this.container.clientWidth / this.container.clientHeight;
+    const aspect = this.region.width / this.region.height;
 
     if (this.camera2d) {
-      this.camera2d.left = this.container.clientWidth / -2;
-      this.camera2d.right = this.container.clientWidth / 2;
-      this.camera2d.top = this.container.clientHeight / 2;
-      this.camera2d.bottom = this.container.clientHeight / -2;
+      this.camera2d.left = this.region.width / -2;
+      this.camera2d.right = this.region.width / 2;
+      this.camera2d.top = this.region.height / 2;
+      this.camera2d.bottom = this.region.height / -2;
       this.camera2d.updateProjectionMatrix();
     }
 

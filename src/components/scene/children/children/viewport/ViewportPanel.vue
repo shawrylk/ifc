@@ -12,7 +12,8 @@
       </div>
       <footer class="viewport-bottom-bar">
         <aside class="viewport-bottom-left">
-          <div class="placeholder">Left Panel</div>
+          <!-- <div class="placeholder">Left Panel</div> -->
+          <PlanViewsList v-model:plans="plans" v-model:visiblePlanId="visiblePlanId" />
         </aside>
         <div class="viewport-bottom-content">
           <div class="placeholder">Bottom Panel</div>
@@ -29,10 +30,13 @@ import * as THREE from 'three';
 import { Viewport } from '../../../../../composables/Viewport';
 import { markRaw } from 'vue';
 import { useThree } from '@/stores/threeStore';
+import PlanViewsList from '../plan-views-panel/children/PlanViewsList.vue';
+import { PlansManager } from '@/composables/PlansManager';
+import { useIFCStore } from '@/stores/ifcStore';
 
 interface ViewportInitialConfig {
-  initialPosition?: { x: number; y: number; z: number };
-  initialTarget?: { x: number; y: number; z: number };
+  initialPosition?: THREE.Vector3;
+  initialTarget?: THREE.Vector3;
 }
 
 const props = defineProps<{
@@ -47,7 +51,6 @@ const emit = defineEmits<{
 }>();
 
 const BOTTOM_PANEL_HEIGHT = 550;
-const LEFT_PANEL_WIDTH = 300;
 const display = ref(props.display ?? false);
 const position = ref(props.position ?? { x: 10, y: 10 });
 const size = ref(props.size ?? { width: 1400, height: 900 });
@@ -56,12 +59,15 @@ const viewports = ref<Viewport[]>([]);
 const isRendering = ref(true);
 const clock = new THREE.Clock();
 const controlsEnabled = ref<boolean[]>([]);
+const plansManager = ref<PlansManager | null>(null);
+const plans = ref<any[]>([]);
+const visiblePlanId = ref<number | null>(null);
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
-  { initialPosition: { x: 0, y: 5, z: 0 }, initialTarget: { x: 0, y: 0, z: 0 } },
-  { initialPosition: { x: 0, y: 5, z: 0 }, initialTarget: { x: 0, y: 0, z: 0 } },
-  { initialPosition: { x: 0, y: 5, z: 0 }, initialTarget: { x: 0, y: 0, z: 0 } },
+  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
 ];
 
 const handleDisplayChange = (value: boolean) => {
@@ -115,8 +121,23 @@ const stopRendering = () => {
   isRendering.value = false;
 };
 
+const loadPlanViews = async () => {
+  if (plansManager.value) return plansManager.value;
+
+  const { getFragmentsModels } = useIFCStore();
+  const fragmentsModels = getFragmentsModels();
+  if (!fragmentsModels) return null;
+
+  return (plansManager.value = new PlansManager(fragmentsModels));
+};
+
 const initRenderer = async () => {
   if (!rendererCanvas.value) return;
+
+  const plansManager = await loadPlanViews();
+  if (plansManager) {
+    plans.value = await plansManager.generate();
+  }
 
   // Clean up any existing renderer and viewports
   cleanup();
@@ -168,7 +189,6 @@ onMounted(() => {
   }
   // Set CSS variables
   document.documentElement.style.setProperty('--bottom-panel-height', `${BOTTOM_PANEL_HEIGHT}px`);
-  document.documentElement.style.setProperty('--left-panel-width', `${LEFT_PANEL_WIDTH}px`);
 });
 
 // Watch for size changes
@@ -194,7 +214,7 @@ const getViewportRegion = (index: number) => {
   const total = 3;
   const margin = 10;
   const width = size.value.width / total - margin;
-  const height = size.value.height - BOTTOM_PANEL_HEIGHT;
+  const height = size.value.height - BOTTOM_PANEL_HEIGHT - 30;
   const x = index * (width + margin);
   const y = 0;
   return {
@@ -255,13 +275,11 @@ defineExpose({
 }
 
 .viewport-bottom-left {
-  width: var(--left-panel-width);
-  min-width: var(--left-panel-width);
   background: #252525;
   border-right: 1px solid #333;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   flex-shrink: 0;
 }
 
