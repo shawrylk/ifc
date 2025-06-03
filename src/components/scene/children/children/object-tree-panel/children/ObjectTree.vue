@@ -22,8 +22,7 @@ import { ref, watch } from 'vue';
 import Tree from 'primevue/tree';
 import ContextMenu from 'primevue/contextmenu';
 import { TreeNode } from 'primevue/treenode';
-import { useModelInfoStore } from '@/stores/modelInfo';
-
+import { useInteractionStore } from '@/stores/interactionStore';
 const props = defineProps<{
   treeData: TreeNode[];
 }>();
@@ -36,7 +35,7 @@ const cm = ref();
 const selectedNode = ref<TreeNode | null>(null);
 const expandedKeys = ref<{ [key: string]: boolean }>({});
 const selectionKeys = ref<{ [key: string]: boolean }>({});
-const modelInfoStore = useModelInfoStore();
+const interactionStore = useInteractionStore();
 
 const findNode = (node: TreeNode, idString: string): TreeNode | null => {
   if (node.key == idString) return node;
@@ -49,7 +48,7 @@ const findNode = (node: TreeNode, idString: string): TreeNode | null => {
 };
 
 watch(
-  () => modelInfoStore.selectedId,
+  () => interactionStore.selectedId,
   (newSelectedId) => {
     if (!newSelectedId) return;
     const idString = newSelectedId.toString();
@@ -139,7 +138,7 @@ const menuItems = [
 const onNodeSelect = (node: TreeNode) => {
   selectedNode.value = node;
   if ('key' in node) {
-    modelInfoStore.selectedId = Number(node.key);
+    interactionStore.selectedId = Number(node.key);
   }
   emit('nodeClick', node);
 };

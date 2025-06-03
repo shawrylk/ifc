@@ -26,9 +26,7 @@ defineProps<{
   width: 32px;
   height: 32px;
   margin: 0 4px;
-  transition:
-    background 0.2s,
-    border 0.2s;
+  transition: border 0.2s;
 }
 .icon-btn:hover {
   background: rgba(255, 255, 255, 0.08);

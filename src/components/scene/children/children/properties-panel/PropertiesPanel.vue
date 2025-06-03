@@ -12,7 +12,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import DraggablePanel from '@/components/commons/DraggablePanel.vue';
-import { useModelInfoStore } from '@/stores/modelInfo';
+import { useInteractionStore } from '@/stores/interactionStore';
 import PropertyTreeTable from './children/PropertyTreeTable.vue';
 
 const props = defineProps<{
@@ -27,7 +27,7 @@ const emit = defineEmits<{
 
 const display = ref(props.display ?? false);
 const position = ref(props.position ?? { x: 10, y: 10 });
-const store = useModelInfoStore();
+const store = useInteractionStore();
 const wasExplicitlyClosed = ref(false);
 
 watch(
