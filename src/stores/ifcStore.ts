@@ -92,9 +92,7 @@ const loadIFC = async (file: File) => {
 
   const sphere = model.box.getBoundingSphere(new THREE.Sphere());
   const controls3d = mainViewport?.controls3d;
-  if (controls3d) {
-    await controls3d.fitToSphere(sphere, true);
-  }
+  controls3d?.fitToSphere(sphere, true);
 
   return fragments;
 };

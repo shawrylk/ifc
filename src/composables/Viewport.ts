@@ -30,7 +30,7 @@ export class Viewport {
   private isDisposed: boolean = false;
 
   constructor(config: ViewportConfig) {
-    this.mode = config.defaultMode ?? ViewportMode.TWO_D;
+    this.mode = config.defaultMode ?? ViewportMode.THREE_D;
     this.container = config.container;
     this.scene = useThree().scene;
     // 2D camera

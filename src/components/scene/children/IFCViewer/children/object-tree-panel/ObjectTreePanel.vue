@@ -85,6 +85,15 @@ watch(display, (newValue) => {
   emit('update:display', newValue);
 });
 
+watch(
+  () => ifcStore.isLoaded,
+  (newValue) => {
+    if (newValue) {
+      loadTreeData();
+    }
+  }
+);
+
 const handleNodeClick = async (item: any) => {
   if (item.id) {
     const info = await interactionStore.getModelInfo(ifcStore, item.id);

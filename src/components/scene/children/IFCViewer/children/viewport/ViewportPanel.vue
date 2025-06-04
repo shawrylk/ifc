@@ -4,7 +4,6 @@
     v-model:display="display"
     v-model:position="position"
     :size="size"
-    @update:display="handleDisplayChange"
   >
     <section class="viewport-panel">
       <div class="viewport-main-row">
@@ -12,11 +11,7 @@
       </div>
       <footer class="viewport-bottom-bar">
         <aside class="viewport-bottom-left">
-          <PlanViewsAndSpaces
-            ref="planViewsAndSpaces"
-            :plansManager="plansManager"
-            @plansGenerated="handlePlansGenerated"
-          />
+          <PlanViewsAndSpaces ref="planViewsAndSpaces" :plansManager="plansManager" />
         </aside>
         <div class="viewport-bottom-content">
           <FlowChart
@@ -50,17 +45,11 @@ interface ViewportInitialConfig {
 
 const props = defineProps<{
   position?: { x: number; y: number };
-  display?: boolean;
   size?: { width: number; height: number };
 }>();
 
-const emit = defineEmits<{
-  (e: 'update:position', value: { x: number; y: number }): void;
-  (e: 'update:display', value: boolean): void;
-}>();
-
 const BOTTOM_PANEL_HEIGHT = 550;
-const display = ref(props.display ?? false);
+const display = defineModel<boolean>('display', { default: false });
 const position = ref(props.position ?? { x: 10, y: 10 });
 const size = ref(props.size ?? { width: 1400, height: 900 });
 const rendererCanvas = ref<HTMLCanvasElement | null>(null);
@@ -68,26 +57,17 @@ const planViewsAndSpaces = ref<InstanceType<typeof PlanViewsAndSpaces> | null>(n
 const viewports = shallowRef<Viewport[]>([]);
 const isRendering = ref(true);
 const plansManager = ref<any>(null);
-const plans = ref<any[]>([]);
 const clock = new THREE.Clock();
 const flowChart = ref<InstanceType<typeof FlowChart> | null>(null);
 const interactionStore = useInteractionStore();
+const ifcStore = useIFCStore();
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
-  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
-  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
-  { initialPosition: new THREE.Vector3(0, 10, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
 ];
-
-const handleDisplayChange = (value: boolean) => {
-  display.value = value;
-  emit('update:display', value);
-};
-
-const handlePlansGenerated = (generatedPlans: any[]) => {
-  plans.value = generatedPlans;
-};
 
 const handleFlowNodeClick = (nodeData: any) => {
   // Handle flow chart node click - could highlight the room in the 3D view
@@ -147,7 +127,7 @@ const stopRendering = () => {
   isRendering.value = false;
 };
 
-const loadPlanViews = async (): Promise<PlansManager | null> => {
+const loadPlanManager = async (): Promise<PlansManager | null> => {
   if (plansManager.value) return plansManager.value;
 
   const { getFragmentsModels } = useIFCStore();
@@ -163,7 +143,7 @@ const initRenderer = async () => {
   if (!rendererCanvas.value) return;
 
   // Load plans manager first
-  plansManager.value = await loadPlanViews();
+  plansManager.value = await loadPlanManager();
 
   // Clean up any existing renderer and viewports
   cleanup();
@@ -240,6 +220,15 @@ watch(
   }
 );
 
+watch(
+  () => ifcStore.isLoaded,
+  (newValue) => {
+    if (newValue) {
+      loadPlanManager();
+    }
+  }
+);
+
 onUnmounted(() => {
   cleanup();
   resetRenderer();
@@ -265,7 +254,10 @@ const getViewportRegion = (index: number) => {
 // Expose methods for external control
 defineExpose({
   viewports,
-  handleDisplayChange,
+  display,
+  handleDisplayChange: (value: boolean) => {
+    display.value = value;
+  },
 });
 </script>
 

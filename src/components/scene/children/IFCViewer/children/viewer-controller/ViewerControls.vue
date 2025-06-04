@@ -92,11 +92,11 @@ const handlePlanViewsOpen = () => {
   }
 };
 
-const handleShowViewports = () => {
+const handleShowViewports = debounce(() => {
   if (props.viewportPanel) {
-    props.viewportPanel.handleDisplayChange(true);
+    props.viewportPanel.handleDisplayChange(!props.viewportPanel.display);
   }
-};
+}, 100);
 
 onUnmounted(() => {
   dispose();

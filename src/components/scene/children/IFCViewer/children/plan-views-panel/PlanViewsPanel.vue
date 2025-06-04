@@ -88,4 +88,13 @@ watch(position, (newValue) => {
 watch(display, (newValue) => {
   emit('update:display', newValue);
 });
+
+watch(
+  () => ifcStore.isLoaded,
+  (newValue) => {
+    if (newValue) {
+      loadPlans();
+    }
+  }
+);
 </script>
