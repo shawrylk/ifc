@@ -6,6 +6,7 @@ import { useThree } from '@/stores/threeStore';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useCategoryLookupStore } from '@/stores/categoryLookupStore';
 import { CameraType } from '@/types/three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Types
 interface ModelInfo {
@@ -150,6 +151,12 @@ export const useInteractionStore = defineStore('interaction', () => {
     selectedId.value = localId;
     selectedInfo.value = modelInfo;
 
+    const fragmentsModels = ifc.getFragmentsModels();
+    if (!fragmentsModels) return;
+    const currentModel = fragmentsModels.models.list.values().next().value;
+    if (!currentModel) return;
+    setHighlightObject(currentModel, localId);
+
     selectionCallbacks.value.forEach((callback) => {
       callback({ localId, modelInfo });
     });
@@ -249,6 +256,50 @@ export const useInteractionStore = defineStore('interaction', () => {
     });
   };
 
+  let depthMeshes: THREE.Mesh[] = [];
+
+  const setHighlightObject = async (model: FRAGS.FragmentsModel, localId: number) => {
+    const depthMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const geometriesArray = await model.getItemsGeometry([localId]);
+
+    // remove previous selection
+    for (const mesh of depthMeshes) {
+      model?.object.remove(mesh);
+    }
+    depthMeshes.length = 0;
+
+    for (const geometries of geometriesArray) {
+      for (const geometry of geometries) {
+        const indices: Uint16Array =
+          'indices' in geometry ? (geometry.indices as Uint16Array) : new Uint16Array();
+        const positions: Float32Array =
+          'positions' in geometry ? (geometry.positions as Float32Array) : new Float32Array();
+        const normals: Int16Array =
+          'normals' in geometry ? (geometry.normals as Int16Array) : new Int16Array();
+        const transform: THREE.Matrix4 = new THREE.Matrix4();
+        if ('transform' in geometry) {
+          if ('elements' in geometry.transform) {
+            transform.fromArray(geometry.transform.elements as number[]);
+          }
+        }
+
+        const tempGeometry = new THREE.BufferGeometry();
+        tempGeometry.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
+        tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        tempGeometry.setAttribute('normal', new THREE.Int16BufferAttribute(normals, 3));
+        const mesh = new THREE.Mesh(tempGeometry, depthMaterial);
+        mesh.applyMatrix4(transform);
+        mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+        model?.object.add(mesh);
+        depthMeshes.push(mesh);
+      }
+    }
+  };
+
   const handleSelect = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
     const { renderer } = three;
     const fragmentsModels = ifc.getFragmentsModels();
@@ -279,7 +330,7 @@ export const useInteractionStore = defineStore('interaction', () => {
           }
 
           highlightId.value = result.localId;
-          promises.push(highlight(model, highlightId.value, selectionMaterial));
+
           promises.push(fragmentsModels?.update(true));
           onItemSelected(highlightId.value);
         } else {
