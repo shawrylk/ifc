@@ -1,6 +1,6 @@
 <template>
   <div class="object-tree">
-    <div v-if="!treeData.length" class="no-data">No IFC model loaded</div>
+    <div v-if="!treeData.length" class="no-data">{{ message }}</div>
     <div v-else class="tree-container">
       <ContextMenu ref="cm" :model="menuItems" />
       <Tree
@@ -26,7 +26,10 @@ import { useInteractionStore } from '@/stores/interactionStore';
 const props = defineProps<{
   treeData: TreeNode[];
   categories: string[];
+  noDataMessage?: string;
 }>();
+
+const message = props.noDataMessage || 'No IFC model loaded';
 
 const emit = defineEmits<{
   (e: 'nodeClick', item: any): void;

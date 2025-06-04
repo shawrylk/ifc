@@ -8,7 +8,8 @@ export interface TreeNode {
 
 export const loadTreeData = async (
   fragmentModel: FragmentsModel,
-  categories?: string[]
+  categories?: string[],
+  rootName?: string
 ): Promise<TreeNode[]> => {
   if (!fragmentModel) return [];
 
@@ -17,13 +18,13 @@ export const loadTreeData = async (
     const spatialElements = await fragmentModel.getSpatialStructure();
     if (spatialElements) {
       // Transform the data into a tree structure
-      const transformNode = (rootNode: any): TreeNode[] => {
+      const transformNode = (rootNode: any, parentLabel?: string): TreeNode[] => {
         interface StackItem {
           node: any;
           result: TreeNode | null;
           parentLabel?: string;
         }
-        const stack: StackItem[] = [{ node: rootNode, result: null }];
+        const stack: StackItem[] = [{ node: rootNode, result: null, parentLabel }];
         const resultMap = new Map<string, TreeNode>();
 
         while (stack.length > 0) {
@@ -74,7 +75,7 @@ export const loadTreeData = async (
         return Array.from(resultMap.values());
       };
 
-      const treeData = transformNode(spatialElements);
+      const treeData = transformNode(spatialElements, rootName);
 
       // Apply category filter if categories are provided
       if (categories && categories.length > 0) {

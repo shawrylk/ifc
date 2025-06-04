@@ -1,9 +1,10 @@
 <template>
   <div class="spaces-panel" v-if="visiblePlanId !== null" :style="{ height: height + 'px' }">
-    <h4 class="spaces-title">Spaces</h4>
+    <h4 class="spaces-title">Rooms</h4>
     <ObjectTree
       :treeData="spacesTreeData"
       :categories="['IFCSPACE']"
+      :noDataMessage="'No rooms in this storey'"
       @nodeClick="handleSpaceNodeClick"
     />
   </div>
@@ -85,7 +86,11 @@ const loadSpacesForPlan = async (planId: number | null) => {
     };
 
     // Load tree data with IFCSPACE filter from the storey's spatial structure
-    const storeyTreeData = await loadTreeData(storeyFragmentModel as any, ['IFCSPACE']);
+    const storeyTreeData = await loadTreeData(
+      storeyFragmentModel as any,
+      ['IFCSPACE'],
+      storey.name
+    );
     spacesTreeData.value = storeyTreeData;
   } catch (error) {
     console.error('Error loading spaces for plan:', error);

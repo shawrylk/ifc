@@ -6,6 +6,7 @@ import { Viewport, ViewportMode } from './Viewport';
 
 interface BuildingStorey {
   _localId: number;
+  name: string;
   model: {
     object: {
       children: THREE.Object3D[];
@@ -56,6 +57,7 @@ export class PlansManager {
       if (!data) continue;
 
       this._storeys.push(storey);
+      storey.name = data.LongName.value;
       const TODO_HARDCODED_UNIT = 1000;
       plans.push({
         id: data._localId.value,
