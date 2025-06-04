@@ -23,6 +23,7 @@ import Tree from 'primevue/tree';
 import ContextMenu from 'primevue/contextmenu';
 import { TreeNode } from 'primevue/treenode';
 import { useInteractionStore } from '@/stores/interactionStore';
+
 const props = defineProps<{
   treeData: TreeNode[];
   categories: string[];

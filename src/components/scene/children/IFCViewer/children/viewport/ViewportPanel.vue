@@ -19,7 +19,11 @@
           />
         </aside>
         <div class="viewport-bottom-content">
-          <div class="placeholder">Bottom Panel</div>
+          <FlowChart
+            ref="flowChart"
+            @nodeClick="handleFlowNodeClick"
+            @functionalGroupCreated="handleFunctionalGroupCreated"
+          />
         </div>
       </footer>
     </section>
@@ -36,6 +40,8 @@ import { useThree } from '@/stores/threeStore';
 import PlanViewsAndSpaces from './children/PlanViewsAndSpaces/PlanViewsAndSpaces.vue';
 import { PlansManager } from '@/composables/PlansManager';
 import { useIFCStore } from '@/stores/ifcStore';
+import { useInteractionStore } from '@/stores/interactionStore';
+import FlowChart from './children/FlowChart/FlowChart.vue';
 
 interface ViewportInitialConfig {
   initialPosition?: THREE.Vector3;
@@ -64,7 +70,8 @@ const isRendering = ref(true);
 const plansManager = ref<any>(null);
 const plans = ref<any[]>([]);
 const clock = new THREE.Clock();
-// const ifcStore = useIFCStore();
+const flowChart = ref<InstanceType<typeof FlowChart> | null>(null);
+const interactionStore = useInteractionStore();
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
@@ -80,6 +87,18 @@ const handleDisplayChange = (value: boolean) => {
 
 const handlePlansGenerated = (generatedPlans: any[]) => {
   plans.value = generatedPlans;
+};
+
+const handleFlowNodeClick = (nodeData: any) => {
+  // Handle flow chart node click - could highlight the room in the 3D view
+  if (nodeData.localId) {
+    interactionStore.selectedId = nodeData.localId;
+  }
+};
+
+const handleFunctionalGroupCreated = (groupData: any) => {
+  // Handle functional group creation - could be used for analytics or reporting
+  console.log('Functional group created:', groupData);
 };
 
 const cleanup = () => {

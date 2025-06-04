@@ -1,7 +1,7 @@
 <template>
   <div class="spaces-panel" v-if="visiblePlanId !== null" :style="{ height: height + 'px' }">
     <h4 class="spaces-title">Rooms</h4>
-    <ObjectTree
+    <DraggableRoomsList
       :treeData="spacesTreeData"
       :categories="['IFCSPACE']"
       :noDataMessage="'No rooms in this storey'"
@@ -12,7 +12,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import ObjectTree from '@/components/scene/children/IFCViewer/children/object-tree-panel/children/ObjectTree.vue';
+import DraggableRoomsList from './DraggableRoomsList.vue';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { loadTreeData, type TreeNode } from '@/utils/treeUtils';

@@ -13,6 +13,10 @@ import aura from '@primeuix/themes/aura';
 import './style.css';
 import * as THREE from 'three';
 import CameraControls from 'camera-controls';
+import '@vue-flow/core/dist/style.css';
+import '@vue-flow/core/dist/theme-default.css';
+import '@vue-flow/controls/dist/style.css';
+import '@vue-flow/minimap/dist/style.css';
 
 CameraControls.install({ THREE: THREE });
 Tabulator.registerModule([DataTreeModule, ResizeColumnsModule, FormatModule, InteractionModule]);
