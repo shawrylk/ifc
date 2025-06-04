@@ -95,11 +95,10 @@ watch(
 );
 
 const handleNodeClick = async (item: any) => {
-  if (item.id) {
-    const info = await interactionStore.getModelInfo(ifcStore, item.id);
-    if (info) {
-      interactionStore.selectedInfo = info;
-    }
+  const id = Number(item.key);
+  if (id) {
+    const onItemSelected = interactionStore.onItemSelected;
+    onItemSelected(id);
   }
 };
 </script>

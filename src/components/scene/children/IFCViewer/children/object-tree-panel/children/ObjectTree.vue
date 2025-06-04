@@ -142,9 +142,6 @@ const menuItems = [
 
 const onNodeSelect = (node: TreeNode) => {
   selectedNode.value = node;
-  if ('key' in node) {
-    interactionStore.selectedId = Number(node.key);
-  }
   emit('nodeClick', node);
 };
 

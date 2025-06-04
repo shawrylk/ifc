@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import * as THREE from 'three';
 import * as FRAGS from '@thatopen/fragments';
-import type { FragmentIdMap } from '@thatopen/fragments';
 import { useThree } from '@/stores/threeStore';
 import { useIFCStore } from '@/stores/ifcStore';
 
@@ -140,11 +139,9 @@ export const useInteractionStore = defineStore('interaction', () => {
     await Promise.all(promises);
   };
 
-  const onItemSelected = async (data: FragmentIdMap) => {
-    const [fragmentId, localIds] = Object.entries(data)[0] || [];
-    if (!fragmentId || !localIds || localIds.size === 0) return;
+  const onItemSelected = async (localId: number) => {
+    if (!localId) return;
 
-    const localId = Array.from(localIds)[0];
     const modelInfo = await getModelInfo(ifc, localId);
     if (!modelInfo) return;
     selectedId.value = localId;
@@ -234,11 +231,7 @@ export const useInteractionStore = defineStore('interaction', () => {
     });
   };
 
-  const handleSelect = async (
-    event: MouseEvent,
-    model: FRAGS.FragmentsModel,
-    modelName: string
-  ) => {
+  const handleSelect = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
     const { mainViewport, renderer } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
@@ -266,8 +259,7 @@ export const useInteractionStore = defineStore('interaction', () => {
       highlightId.value = result.localId;
       promises.push(highlight(model, highlightId.value, selectionMaterial));
       promises.push(fragmentsModels?.update(true));
-      const data: FragmentIdMap = { [modelName]: new Set([highlightId.value]) };
-      onItemSelected(data);
+      onItemSelected(highlightId.value);
     } else {
       // Reset selection only when clicking on empty space
       if (highlightId.value) {
@@ -313,7 +305,7 @@ export const useInteractionStore = defineStore('interaction', () => {
         const deltaY = Math.abs(event.clientY - startY);
 
         if (deltaX < DRAG_THRESHOLD && deltaY < DRAG_THRESHOLD) {
-          handleSelect(event, model, modelName);
+          handleSelect(event, model);
         }
       };
 
