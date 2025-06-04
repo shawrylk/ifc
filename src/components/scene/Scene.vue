@@ -34,12 +34,22 @@ onUnmounted(() => {
 .scene {
   width: 100%;
   height: 100%;
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .viewer-container {
   width: 100%;
   height: 100%;
   min-height: 500px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
 }
 </style>

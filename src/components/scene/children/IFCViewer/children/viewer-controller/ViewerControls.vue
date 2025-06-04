@@ -120,6 +120,9 @@ onUnmounted(() => {
   top: 10px;
   left: 10px;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .controls-buttons :deep(.pi) {

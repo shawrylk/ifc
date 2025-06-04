@@ -81,6 +81,14 @@ defineExpose({
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Allow clicks to pass through to the canvas */
+  z-index: 10; /* Ensure UI elements are above the canvas */
+}
+
+/* Allow pointer events on interactive elements within the viewer */
+.ifc-viewer > * {
   pointer-events: auto;
 }
 </style>
