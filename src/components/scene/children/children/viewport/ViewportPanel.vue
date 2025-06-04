@@ -12,8 +12,11 @@
       </div>
       <footer class="viewport-bottom-bar">
         <aside class="viewport-bottom-left">
-          <!-- <div class="placeholder">Left Panel</div> -->
-          <PlanViewsList v-model:plans="plans" v-model:visiblePlanId="visiblePlanId" />
+          <PlanViewsAndSpaces
+            ref="planViewsAndSpaces"
+            :plansManager="plansManager"
+            @plansGenerated="handlePlansGenerated"
+          />
         </aside>
         <div class="viewport-bottom-content">
           <div class="placeholder">Bottom Panel</div>
@@ -30,7 +33,7 @@ import * as THREE from 'three';
 import { Viewport } from '@/composables/Viewport';
 import { markRaw } from 'vue';
 import { useThree } from '@/stores/threeStore';
-import PlanViewsList from '../plan-views-panel/children/PlanViewsList.vue';
+import PlanViewsAndSpaces from './children/PlanViewsAndSpaces.vue';
 import { PlansManager } from '@/composables/PlansManager';
 import { useIFCStore } from '@/stores/ifcStore';
 
@@ -55,12 +58,13 @@ const display = ref(props.display ?? false);
 const position = ref(props.position ?? { x: 10, y: 10 });
 const size = ref(props.size ?? { width: 1400, height: 900 });
 const rendererCanvas = ref<HTMLCanvasElement | null>(null);
+const planViewsAndSpaces = ref<InstanceType<typeof PlanViewsAndSpaces> | null>(null);
 const viewports = shallowRef<Viewport[]>([]);
 const isRendering = ref(true);
-const plansManager = ref<PlansManager | null>(null);
+const plansManager = ref<any>(null);
 const plans = ref<any[]>([]);
-const visiblePlanId = ref<number | null>(null);
 const clock = new THREE.Clock();
+const ifcStore = useIFCStore();
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
@@ -72,6 +76,10 @@ const viewportConfigs: ViewportInitialConfig[] = [
 const handleDisplayChange = (value: boolean) => {
   display.value = value;
   emit('update:display', value);
+};
+
+const handlePlansGenerated = (generatedPlans: any[]) => {
+  plans.value = generatedPlans;
 };
 
 const cleanup = () => {
@@ -120,23 +128,23 @@ const stopRendering = () => {
   isRendering.value = false;
 };
 
-const loadPlanViews = async () => {
+const loadPlanViews = async (): Promise<PlansManager | null> => {
   if (plansManager.value) return plansManager.value;
 
   const { getFragmentsModels } = useIFCStore();
   const fragmentsModels = getFragmentsModels();
   if (!fragmentsModels) return null;
 
-  return (plansManager.value = new PlansManager(fragmentsModels));
+  const newPlansManager = new PlansManager(fragmentsModels);
+  plansManager.value = newPlansManager;
+  return newPlansManager;
 };
 
 const initRenderer = async () => {
   if (!rendererCanvas.value) return;
 
-  const plansManager = await loadPlanViews();
-  if (plansManager) {
-    plans.value = await plansManager.generate();
-  }
+  // Load plans manager first
+  plansManager.value = await loadPlanViews();
 
   // Clean up any existing renderer and viewports
   cleanup();
@@ -201,13 +209,17 @@ watch(
   { deep: true }
 );
 
-watch(visiblePlanId, async (newPlanId) => {
-  if (plansManager.value) {
-    await Promise.all(
-      viewports.value.map((viewport) => plansManager.value?.goTo(newPlanId, viewport))
-    );
+// Watch for plan selection changes and update viewports
+watch(
+  () => planViewsAndSpaces.value?.visiblePlanId,
+  async (newPlanId) => {
+    if (plansManager.value && planViewsAndSpaces.value && newPlanId !== undefined) {
+      await Promise.all(
+        viewports.value.map((viewport) => planViewsAndSpaces.value?.goToPlan(newPlanId, viewport))
+      );
+    }
   }
-});
+);
 
 onUnmounted(() => {
   cleanup();
@@ -287,6 +299,10 @@ defineExpose({
   align-items: flex-start;
   justify-content: flex-start;
   flex-shrink: 0;
+  width: 300px;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
 }
 
 .viewport-bottom-content {

@@ -25,6 +25,7 @@ import { TreeNode } from 'primevue/treenode';
 import { useInteractionStore } from '@/stores/interactionStore';
 const props = defineProps<{
   treeData: TreeNode[];
+  categories: string[];
 }>();
 
 const emit = defineEmits<{

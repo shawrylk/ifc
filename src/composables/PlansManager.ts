@@ -133,4 +133,8 @@ export class PlansManager {
     await this._model?.setVisible(items, true);
     this.forceUpdate(viewport);
   }
+
+  getStorey(planId: number) {
+    return this._storeys.find((s) => s._localId === planId);
+  }
 }

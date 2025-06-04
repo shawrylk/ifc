@@ -5,7 +5,7 @@
     v-model:position="position"
     @update:display="handleDisplayChange"
   >
-    <ObjectTree :treeData="treeData" @nodeClick="handleNodeClick" />
+    <ObjectTree :treeData="treeData" :categories="categories" @nodeClick="handleNodeClick" />
   </DraggablePanel>
 </template>
 
@@ -15,10 +15,12 @@ import DraggablePanel from '@/components/commons/DraggablePanel.vue';
 import ObjectTree from './children/ObjectTree.vue';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useIFCStore } from '@/stores/ifcStore';
+import { loadTreeData as loadTreeDataUtil, type TreeNode } from '@/utils/treeUtils';
 
 const props = defineProps<{
   position?: { x: number; y: number };
   display?: boolean;
+  categories?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -28,7 +30,8 @@ const emit = defineEmits<{
 
 const display = ref(props.display ?? false);
 const position = ref(props.position || { x: 10, y: 10 });
-const treeData = ref<any[]>([]);
+const categories = ref(props.categories || []);
+const treeData = ref<TreeNode[]>([]);
 const ifcStore = useIFCStore();
 const interactionStore = useInteractionStore();
 
@@ -43,74 +46,19 @@ const loadTreeData = async () => {
   const currentModel = fragmentsModels.models.list.values().next().value;
   if (!currentModel) return;
 
-  try {
-    // Get spatial structure elements
-    const spatialElements = await currentModel.getSpatialStructure();
-    if (spatialElements) {
-      // Transform the data into a tree structure
-      const transformNode = (rootNode: any) => {
-        interface StackItem {
-          node: any;
-          result: any;
-          parentLabel?: string;
-        }
-        const stack: StackItem[] = [{ node: rootNode, result: null }];
-        const resultMap = new Map<string, any>();
-
-        while (stack.length > 0) {
-          const current = stack.pop();
-          if (!current) continue;
-
-          const { node, result, parentLabel } = current;
-
-          // If node has no localId, just pass its label to children
-          if (!node.localId) {
-            if (node.children && node.children.length > 0) {
-              // Push children to stack with parent's label
-              for (let i = node.children.length - 1; i >= 0; i--) {
-                stack.push({
-                  node: node.children[i],
-                  result: result,
-                  parentLabel: node.category || parentLabel,
-                });
-              }
-            }
-            continue;
-          }
-
-          const transformedNode = {
-            key: `${node.localId}`,
-            label: `${node.category || parentLabel} (id: ${node.localId})`,
-            children: [],
-          };
-
-          if (result) {
-            result.children.push(transformedNode);
-          } else {
-            resultMap.set(node.localId, transformedNode);
-          }
-
-          if (node.children && node.children.length > 0) {
-            // Push children to stack in reverse order to maintain original order
-            for (let i = node.children.length - 1; i >= 0; i--) {
-              stack.push({
-                node: node.children[i],
-                result: transformedNode,
-                parentLabel: node.category || parentLabel,
-              });
-            }
-          }
-        }
-
-        return Array.from(resultMap.values());
-      };
-
-      treeData.value = transformNode(spatialElements);
-    }
-  } catch (error) {
-    console.error('Error loading tree data:', error);
-  }
+  treeData.value = await loadTreeDataUtil(currentModel, categories.value);
 };
+
+// Watch for categories changes and reload tree data
+watch(
+  () => props.categories,
+  (newCategories) => {
+    categories.value = newCategories || [];
+    if (display.value) {
+      loadTreeData();
+    }
+  }
+);
 
 // Expose the display property to parent components
 defineExpose({
