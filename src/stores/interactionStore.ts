@@ -6,7 +6,6 @@ import { useThree } from '@/stores/threeStore';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useCategoryLookupStore } from '@/stores/categoryLookupStore';
 import { CameraType } from '@/types/three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Types
 interface ModelInfo {
@@ -166,6 +165,12 @@ export const useInteractionStore = defineStore('interaction', () => {
     selectedId.value = null;
     selectedInfo.value = null;
 
+    const fragmentsModels = ifc.getFragmentsModels();
+    if (!fragmentsModels) return;
+    const currentModel = fragmentsModels.models.list.values().next().value;
+    if (!currentModel) return;
+    setHighlightObject(currentModel);
+
     deselectionCallbacks.value.forEach((callback) => {
       callback();
     });
@@ -258,13 +263,13 @@ export const useInteractionStore = defineStore('interaction', () => {
 
   let depthMeshes: THREE.Mesh[] = [];
 
-  const setHighlightObject = async (model: FRAGS.FragmentsModel, localId: number) => {
+  const setHighlightObject = async (model: FRAGS.FragmentsModel, localId?: number, opacity = 1) => {
     const depthMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ff00,
       depthWrite: false,
       depthTest: false,
+      opacity: opacity,
     });
-    const geometriesArray = await model.getItemsGeometry([localId]);
 
     // remove previous selection
     for (const mesh of depthMeshes) {
@@ -272,6 +277,9 @@ export const useInteractionStore = defineStore('interaction', () => {
     }
     depthMeshes.length = 0;
 
+    if (localId === undefined) return;
+
+    const geometriesArray = await model.getItemsGeometry([localId]);
     for (const geometries of geometriesArray) {
       for (const geometry of geometries) {
         const indices: Uint16Array =
@@ -333,6 +341,7 @@ export const useInteractionStore = defineStore('interaction', () => {
 
           promises.push(fragmentsModels?.update(true));
           onItemSelected(highlightId.value);
+          break;
         } else {
           // Log when selection is blocked by filter
           const category = categoryLookup.getCategoryByLocalId(result.localId);
@@ -349,6 +358,7 @@ export const useInteractionStore = defineStore('interaction', () => {
           highlightId.value = null;
           onItemDeselected();
         }
+        setHighlightObject(model);
       }
       await Promise.all(promises);
     }

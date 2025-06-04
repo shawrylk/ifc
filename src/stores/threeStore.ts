@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import InfiniteGridHelper from '@/composables/InfiniteGridHelper';
 import { Viewport, ViewportMode } from '@/composables/Viewport';
+import { FragmentsModels } from '@thatopen/fragments';
 
 export type ViewMode = '2d' | '3d';
 
@@ -23,6 +24,7 @@ interface ThreeStoreState {
   setRender(pause: boolean): void;
   addSubViewport(viewport: Viewport): void;
   removeSubViewport(viewport: Viewport): void;
+  forceUpdate(viewport: Viewport | null, fragmentsModels: FragmentsModels | null): void;
 }
 
 const startRenderLoop = () => {
@@ -164,6 +166,24 @@ const store: ThreeStoreState = {
       store.renderer.dispose();
       store.isInitialized = false;
     }
+  },
+
+  async forceUpdate(viewport: Viewport | null, fragmentsModels: FragmentsModels | null) {
+    const view = viewport ?? store.mainViewport;
+    // cheat: model is not refreshed immediately, so request animation frame 20 times
+    let i = 0;
+    const controls = view?.controls;
+    const updateScene = async () => {
+      if (i < 20 && controls) {
+        controls.update(store.clock.getDelta());
+        await fragmentsModels?.update();
+        await fragmentsModels?.update(true);
+        store.render(true);
+        i++;
+        requestAnimationFrame(updateScene);
+      }
+    };
+    requestAnimationFrame(updateScene);
   },
 };
 

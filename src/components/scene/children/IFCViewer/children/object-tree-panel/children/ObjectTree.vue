@@ -23,6 +23,8 @@ import Tree from 'primevue/tree';
 import ContextMenu from 'primevue/contextmenu';
 import { TreeNode } from 'primevue/treenode';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useThree } from '@/stores/threeStore';
+import { useIFCStore } from '@/stores/ifcStore';
 
 const props = defineProps<{
   treeData: TreeNode[];
@@ -41,6 +43,8 @@ const selectedNode = ref<TreeNode | null>(null);
 const expandedKeys = ref<{ [key: string]: boolean }>({});
 const selectionKeys = ref<{ [key: string]: boolean }>({});
 const interactionStore = useInteractionStore();
+const { forceUpdate } = useThree();
+const { getFragmentsModels } = useIFCStore();
 
 const findNode = (node: TreeNode, idString: string): TreeNode | null => {
   if (node.key == idString) return node;
@@ -143,6 +147,7 @@ const menuItems = [
 const onNodeSelect = (node: TreeNode) => {
   selectedNode.value = node;
   emit('nodeClick', node);
+  forceUpdate(null, getFragmentsModels());
 };
 
 const onContextMenu = (event: any) => {

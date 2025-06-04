@@ -4,7 +4,6 @@ import * as FRAGS from '@thatopen/fragments';
 import * as THREE from 'three';
 import { ref, markRaw } from 'vue';
 import { defineStore } from 'pinia';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 let fragmentsModels: FragmentsModels | null = null;
 // cannot use pinia store because of thread-safety issues
@@ -82,13 +81,13 @@ const loadIFC = async (file: File) => {
   });
 
   // show wireframe
-  const mergedGeometry = mergeGeometries(geometries);
-  const edges = new THREE.EdgesGeometry(mergedGeometry, 0.1);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0x878787, toneMapped: true });
-  const wireframe = new THREE.LineSegments(edges, lineMaterial);
-  wireframe.matrix.copy(model.object.matrix);
-  wireframe.name = 'wireframe';
-  model.object.add(wireframe);
+  // const mergedGeometry = mergeGeometries(geometries);
+  // const edges = new THREE.EdgesGeometry(mergedGeometry, 0.1);
+  // const lineMaterial = new THREE.LineBasicMaterial({ color: 0x878787, toneMapped: true });
+  // const wireframe = new THREE.LineSegments(edges, lineMaterial);
+  // wireframe.matrix.copy(model.object.matrix);
+  // wireframe.name = 'wireframe';
+  // model.object.add(wireframe);
 
   const sphere = model.box.getBoundingSphere(new THREE.Sphere());
   const controls3d = mainViewport?.controls3d;

@@ -71,7 +71,7 @@ export class PlansManager {
 
   async goTo(planId: number | null, viewport?: Viewport) {
     const threeStore = useThree();
-    const { clock, mainViewport } = threeStore;
+    const { clock, mainViewport, forceUpdate } = threeStore;
     const view = viewport ?? mainViewport;
     if (planId) {
       view?.switchMode(ViewportMode.TWO_D);
@@ -88,7 +88,7 @@ export class PlansManager {
           if (data) {
             const TODO_HARDCODED_UNIT = 1000;
             const elevation = data.Elevation.value / TODO_HARDCODED_UNIT;
-            await controls2d?.setLookAt(0, elevation + 0.1, 0, 0, elevation, 0, false);
+            await controls2d?.setLookAt(0, elevation + 5, 0, 0, elevation, 0, false);
           }
         }
         if (controls2d) {
@@ -108,32 +108,15 @@ export class PlansManager {
         controls3d.update(clock.getDelta());
       }
     }
-    this.forceUpdate(view);
+    forceUpdate(view, this._fragmentsModels);
   }
 
-  private forceUpdate(viewport?: Viewport | null) {
-    const { render, clock, mainViewport } = useThree();
-    const view = viewport ?? mainViewport;
-    // cheat: model is not refreshed immediately, so request animation frame 20 times
-    let i = 0;
-    const controls = view?.controls;
-    const updateScene = async () => {
-      if (i < 20 && controls) {
-        controls.update(clock.getDelta());
-        await this._fragmentsModels.update();
-        await this._fragmentsModels.update(true);
-        render(true);
-        i++;
-        requestAnimationFrame(updateScene);
-      }
-    };
-    requestAnimationFrame(updateScene);
-  }
-
-  async reset(viewport?: Viewport | null) {
+  async reset(viewport: Viewport | null) {
+    const threeStore = useThree();
+    const { forceUpdate } = threeStore;
     const items = await this._model?.getItemsByVisibility(false);
     await this._model?.setVisible(items, true);
-    this.forceUpdate(viewport);
+    forceUpdate(viewport, this._fragmentsModels);
   }
 
   getStorey(planId: number) {

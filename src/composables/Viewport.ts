@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import CameraControls from 'camera-controls';
 import { useThree } from '@/stores/threeStore';
+import { useIFCStore } from '@/stores/ifcStore';
 
 export interface ViewportConfig {
   initialPosition?: THREE.Vector3;
@@ -139,6 +140,10 @@ export class Viewport {
 
   public switchMode(mode: ViewportMode) {
     this.mode = mode;
+    const fragmentModels = useIFCStore().getFragmentsModels();
+    for (const [_, model] of fragmentModels?.models?.list ?? []) {
+      model.useCamera(this.camera);
+    }
     this.controls.camera.updateProjectionMatrix();
   }
 

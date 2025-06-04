@@ -18,7 +18,7 @@
       :fit-view-on-init="true"
       :class="['vue-flow-container', { 'drag-over': isDragOver }]"
       :nodes-selectable="true"
-      :selection-key-code="['Meta', 'Control']"
+      :selection-key-code="true"
       :select-nodes-on-drag="false"
       :pan-on-drag="[1, 2]"
       @drop="onDrop"
