@@ -11,6 +11,7 @@ export interface ViewportConfig {
   controlsTarget?: HTMLElement | null;
   container: HTMLElement;
   defaultMode?: ViewportMode;
+  margin?: number;
 }
 
 export enum ViewportMode {
@@ -29,11 +30,13 @@ export class Viewport {
   private region: { x: number; y: number; width: number; height: number };
   private renderer: THREE.WebGLRenderer;
   private isDisposed: boolean = false;
+  private margin: number;
 
   constructor(config: ViewportConfig) {
     this.mode = config.defaultMode ?? ViewportMode.THREE_D;
     this.container = config.container;
     this.scene = useThree().scene;
+    this.margin = config.margin ?? 0;
     // 2D camera
     this.camera2d = new THREE.OrthographicCamera(
       config.region.width / -2,
@@ -54,6 +57,7 @@ export class Viewport {
     this.controls2d = new CameraControls(this.camera2d, this.container);
     this.controls2d.mouseButtons.left = CameraControls.ACTION.NONE;
     this.controls2d.mouseButtons.wheel = CameraControls.ACTION.ZOOM;
+    this.controls2d.dollySpeed = 3;
 
     const position = config.initialPosition || { x: 5, y: 5, z: 5 };
     const targetPos = config.initialTarget || { x: 0, y: 0, z: 0 };
@@ -87,7 +91,6 @@ export class Viewport {
 
     this.region = config.region;
     this.renderer = config.renderer;
-    this.container.addEventListener('resize', this.handleResize);
     this.handleResize(); // Initial size setup
   }
 
@@ -96,6 +99,7 @@ export class Viewport {
 
     const aspect = this.region.width / this.region.height;
 
+    // Update 2D camera
     if (this.camera2d) {
       this.camera2d.left = this.region.width / -2;
       this.camera2d.right = this.region.width / 2;
@@ -104,6 +108,7 @@ export class Viewport {
       this.camera2d.updateProjectionMatrix();
     }
 
+    // Update 3D camera
     if (this.camera3d) {
       this.camera3d.aspect = aspect;
       this.camera3d.updateProjectionMatrix();
@@ -124,11 +129,43 @@ export class Viewport {
       const offsetY = containerRect.top - canvasRect.top;
 
       const { x, y, width, height } = this.region;
-      // Flip y for Three.js (canvas y=0 is top, Three.js y=0 is bottom)
-      const flippedY = this.renderer.domElement.height - (y + offsetY) - height;
 
-      this.renderer.setViewport(x + offsetX, flippedY, width, height);
-      this.renderer.setScissor(x + offsetX, flippedY, width, height);
+      // Calculate available space after margins
+      const availableWidth = Math.max(0, width - this.margin * 2);
+      const availableHeight = Math.max(0, height - this.margin * 2);
+
+      // Calculate original aspect ratio
+      const originalAspect = width / height;
+      const availableAspect = availableWidth / availableHeight;
+
+      let finalWidth: number;
+      let finalHeight: number;
+      let centerOffsetX: number;
+      let centerOffsetY: number;
+
+      if (originalAspect > availableAspect) {
+        // Original is wider - fit to available width
+        finalWidth = availableWidth;
+        finalHeight = availableWidth / originalAspect;
+        centerOffsetX = 0;
+        centerOffsetY = (availableHeight - finalHeight) / 2;
+      } else {
+        // Original is taller - fit to available height
+        finalWidth = availableHeight * originalAspect;
+        finalHeight = availableHeight;
+        centerOffsetX = (availableWidth - finalWidth) / 2;
+        centerOffsetY = 0;
+      }
+
+      // Calculate final position with margins and centering
+      const finalX = x + this.margin + centerOffsetX;
+      const finalY = y + this.margin + centerOffsetY;
+
+      // Flip y for Three.js (canvas y=0 is top, Three.js y=0 is bottom)
+      const flippedY = this.renderer.domElement.height - (finalY + offsetY) - finalHeight;
+
+      this.renderer.setViewport(finalX + offsetX, flippedY, finalWidth, finalHeight);
+      this.renderer.setScissor(finalX + offsetX, flippedY, finalWidth, finalHeight);
       this.renderer.setScissorTest(true);
 
       // Render the scene
@@ -150,19 +187,20 @@ export class Viewport {
   public updateRegion(region: { x: number; y: number; width: number; height: number }) {
     if (this.isDisposed) return;
     this.region = region;
+    this.handleResize();
   }
 
   public dispose() {
     if (this.isDisposed) return;
 
     this.isDisposed = true;
+
     if (this.controls2d) {
       this.controls2d.dispose();
     }
     if (this.controls3d) {
       this.controls3d.dispose();
     }
-    window.removeEventListener('resize', this.handleResize);
   }
 
   public get controls() {

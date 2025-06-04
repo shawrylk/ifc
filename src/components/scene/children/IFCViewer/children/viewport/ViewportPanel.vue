@@ -9,10 +9,34 @@
       <div class="viewport-main-row">
         <div ref="rendererCanvas" class="viewport-canvas-container"></div>
       </div>
+
+      <!-- Resize handle -->
+      <div
+        ref="resizeHandle"
+        class="resize-handle"
+        :class="{ resizing: isResizing }"
+        @mousedown="startResize"
+        @touchstart="startResize"
+      >
+        <div class="resize-handle-line"></div>
+      </div>
+
       <footer class="viewport-bottom-bar">
         <aside class="viewport-bottom-left">
           <PlanViewsAndSpaces ref="planViewsAndSpaces" :plansManager="plansManager" />
         </aside>
+
+        <!-- Vertical resize handle -->
+        <div
+          ref="verticalResizeHandle"
+          class="vertical-resize-handle"
+          :class="{ resizing: isVerticalResizing }"
+          @mousedown="startVerticalResize"
+          @touchstart="startVerticalResize"
+        >
+          <div class="vertical-resize-handle-line"></div>
+        </div>
+
         <div class="viewport-bottom-content">
           <FlowChart
             ref="flowChart"
@@ -61,6 +85,17 @@ const clock = new THREE.Clock();
 const flowChart = ref<InstanceType<typeof FlowChart> | null>(null);
 const interactionStore = useInteractionStore();
 const ifcStore = useIFCStore();
+const resizeObserver = ref<ResizeObserver | null>(null);
+const resizeHandle = ref<HTMLElement | null>(null);
+const isResizing = ref(false);
+const bottomPanelHeight = ref(BOTTOM_PANEL_HEIGHT);
+const resizeStartY = ref(0);
+const resizeStartHeight = ref(0);
+const isVerticalResizing = ref(false);
+const verticalResizeHandle = ref<HTMLElement | null>(null);
+const leftPanelWidth = ref(300);
+const verticalResizeStartX = ref(0);
+const verticalResizeStartWidth = ref(0);
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [
@@ -81,6 +116,105 @@ const handleFunctionalGroupCreated = (groupData: any) => {
   console.log('Functional group created:', groupData);
 };
 
+const startResize = (event: MouseEvent | TouchEvent) => {
+  isResizing.value = true;
+
+  const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+  resizeStartY.value = clientY;
+  resizeStartHeight.value = bottomPanelHeight.value;
+
+  document.addEventListener('mousemove', handleResize, { passive: false });
+  document.addEventListener('mouseup', stopResize);
+  document.addEventListener('touchmove', handleResize, { passive: false });
+  document.addEventListener('touchend', stopResize);
+  document.body.style.userSelect = 'none'; // Prevent text selection during drag
+  event.preventDefault();
+};
+
+let resizeThrottle: number | null = null;
+
+const handleResize = (event: MouseEvent | TouchEvent) => {
+  if (!isResizing.value) return;
+
+  event.preventDefault();
+
+  const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+  const deltaY = resizeStartY.value - clientY; // Inverted: moving up increases height
+  const newHeight = resizeStartHeight.value + deltaY;
+
+  const minHeight = 200;
+  const maxHeight = size.value.height - 200;
+
+  bottomPanelHeight.value = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+  // Throttle CSS and viewport updates
+  if (resizeThrottle) {
+    cancelAnimationFrame(resizeThrottle);
+  }
+
+  resizeThrottle = requestAnimationFrame(() => {
+    // Update CSS variable
+    document.documentElement.style.setProperty(
+      '--bottom-panel-height',
+      `${bottomPanelHeight.value}px`
+    );
+
+    // Throttle viewport updates even more
+    if (rendererCanvas.value) {
+      // Wait for next frame to get updated dimensions
+      requestAnimationFrame(() => {
+        if (rendererCanvas.value) {
+          const canvasRect = rendererCanvas.value.getBoundingClientRect();
+          if (canvasRect.width > 0 && canvasRect.height > 0) {
+            viewports.value.forEach((viewport, index) => {
+              viewport.updateRegion(getActualViewportRegion(index, canvasRect));
+            });
+          }
+        }
+      });
+    }
+  });
+};
+
+const stopResize = () => {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', handleResize);
+  document.removeEventListener('mouseup', stopResize);
+  document.removeEventListener('touchmove', handleResize);
+  document.removeEventListener('touchend', stopResize);
+  document.body.style.userSelect = ''; // Restore text selection
+
+  if (resizeThrottle) {
+    cancelAnimationFrame(resizeThrottle);
+    resizeThrottle = null;
+  }
+};
+
+const setupResizeObserver = () => {
+  if (!rendererCanvas.value || typeof ResizeObserver === 'undefined') return;
+
+  resizeObserver.value = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.target === rendererCanvas.value) {
+        const containerRect = entry.contentRect;
+        if (containerRect.width > 0 && containerRect.height > 0) {
+          // Update renderer size
+          const { renderer } = useThree();
+          renderer.setSize(containerRect.width, containerRect.height);
+
+          // Update viewport regions
+          viewports.value.forEach((viewport, index) => {
+            viewport.updateRegion(getActualViewportRegion(index, containerRect as DOMRect));
+          });
+        }
+        break;
+      }
+    }
+  });
+
+  resizeObserver.value.observe(rendererCanvas.value);
+};
+
 const cleanup = () => {
   const { mainViewport } = useThree();
   stopRendering();
@@ -90,6 +224,12 @@ const cleanup = () => {
   // Dispose all viewports
   viewports.value.forEach((viewport) => viewport.dispose());
   viewports.value = [];
+
+  // Clean up resize observer
+  if (resizeObserver.value) {
+    resizeObserver.value.disconnect();
+    resizeObserver.value = null;
+  }
 };
 
 const resetRenderer = () => {
@@ -142,6 +282,17 @@ const loadPlanManager = async (): Promise<PlansManager | null> => {
 const initRenderer = async () => {
   if (!rendererCanvas.value) return;
 
+  // Wait for DOM to be fully rendered
+  await nextTick();
+
+  // Get actual container dimensions
+  const containerRect = rendererCanvas.value.getBoundingClientRect();
+  if (containerRect.width === 0 || containerRect.height === 0) {
+    // Container not ready yet, wait a bit more
+    setTimeout(() => initRenderer(), 100);
+    return;
+  }
+
   // Load plans manager first
   plansManager.value = await loadPlanManager();
 
@@ -155,17 +306,24 @@ const initRenderer = async () => {
     rendererCanvas.value.appendChild(renderer.domElement);
   }
 
-  // Initialize viewports
-  viewportConfigs.forEach((config) => {
+  // Ensure renderer is sized to container
+  renderer.setSize(containerRect.width, containerRect.height);
+
+  // Initialize viewports with actual container dimensions
+  viewportConfigs.forEach((config, index) => {
     const viewport = new Viewport({
       ...config,
       renderer: renderer,
-      region: getViewportRegion(viewports.value.length),
+      region: getActualViewportRegion(index, containerRect),
       container: rendererCanvas.value!,
+      margin: 10,
     });
     viewports.value.push(markRaw(viewport));
     addSubViewport(viewport);
   });
+
+  // Set up resize observer for dynamic size changes
+  setupResizeObserver();
 
   // Start rendering
   isRendering.value = true;
@@ -194,14 +352,29 @@ onMounted(() => {
     initRenderer();
   }
   // Set CSS variables
-  document.documentElement.style.setProperty('--bottom-panel-height', `${BOTTOM_PANEL_HEIGHT}px`);
+  document.documentElement.style.setProperty(
+    '--bottom-panel-height',
+    `${bottomPanelHeight.value}px`
+  );
+  document.documentElement.style.setProperty('--left-panel-width', `${leftPanelWidth.value}px`);
 });
 
 // Watch for size changes
 watch(
   () => size.value,
   () => {
-    // Update viewport regions
+    // Update viewport regions using actual container dimensions if available
+    if (rendererCanvas.value) {
+      const containerRect = rendererCanvas.value.getBoundingClientRect();
+      if (containerRect.width > 0 && containerRect.height > 0) {
+        viewports.value.forEach((viewport, index) => {
+          viewport.updateRegion(getActualViewportRegion(index, containerRect));
+        });
+        return;
+      }
+    }
+
+    // Fallback to size prop if container dimensions not available
     viewports.value.forEach((viewport, index) => {
       viewport.updateRegion(getViewportRegion(index));
     });
@@ -234,16 +407,35 @@ onUnmounted(() => {
   cleanup();
   resetRenderer();
   viewports.value.forEach((viewport) => useThree().removeSubViewport(viewport));
+  // Clean up resize event listeners
+  stopResize();
+  stopVerticalResize();
 });
+
+// Helper to get pixel region for each viewport using actual container dimensions
+const getActualViewportRegion = (index: number, containerRect: DOMRect) => {
+  // 3 viewports in a row
+  const total = 3;
+  const width = containerRect.width / total;
+  const height = containerRect.height; // Use full container height since it's already the canvas area
+  const x = index * width;
+  const y = 0;
+  const region = {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height),
+  };
+  return region;
+};
 
 // Helper to get pixel region for each viewport
 const getViewportRegion = (index: number) => {
   // 3 viewports in a row
   const total = 3;
-  const margin = 10;
-  const width = size.value.width / total - margin;
-  const height = size.value.height - BOTTOM_PANEL_HEIGHT - 30;
-  const x = index * (width + margin);
+  const width = size.value.width / total;
+  const height = size.value.height - bottomPanelHeight.value - 30;
+  const x = index * width;
   const y = 0;
   return {
     x: Math.round(x),
@@ -251,6 +443,62 @@ const getViewportRegion = (index: number) => {
     width: Math.round(width),
     height: Math.round(height),
   };
+};
+
+const startVerticalResize = (event: MouseEvent | TouchEvent) => {
+  isVerticalResizing.value = true;
+
+  const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+  verticalResizeStartX.value = clientX;
+  verticalResizeStartWidth.value = leftPanelWidth.value;
+
+  document.addEventListener('mousemove', handleVerticalResize, { passive: false });
+  document.addEventListener('mouseup', stopVerticalResize);
+  document.addEventListener('touchmove', handleVerticalResize, { passive: false });
+  document.addEventListener('touchend', stopVerticalResize);
+  document.body.style.userSelect = 'none'; // Prevent text selection during drag
+  event.preventDefault();
+};
+
+let verticalResizeThrottle: number | null = null;
+
+const handleVerticalResize = (event: MouseEvent | TouchEvent) => {
+  if (!isVerticalResizing.value) return;
+
+  event.preventDefault();
+
+  const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+  const deltaX = clientX - verticalResizeStartX.value;
+  const newWidth = verticalResizeStartWidth.value + deltaX;
+
+  const minWidth = 200;
+  const maxWidth = 600;
+
+  leftPanelWidth.value = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+  // Throttle CSS updates
+  if (verticalResizeThrottle) {
+    cancelAnimationFrame(verticalResizeThrottle);
+  }
+
+  verticalResizeThrottle = requestAnimationFrame(() => {
+    // Update CSS variable for left panel width
+    document.documentElement.style.setProperty('--left-panel-width', `${leftPanelWidth.value}px`);
+  });
+};
+
+const stopVerticalResize = () => {
+  isVerticalResizing.value = false;
+  document.removeEventListener('mousemove', handleVerticalResize);
+  document.removeEventListener('mouseup', stopVerticalResize);
+  document.removeEventListener('touchmove', handleVerticalResize);
+  document.removeEventListener('touchend', stopVerticalResize);
+  document.body.style.userSelect = ''; // Restore text selection
+
+  if (verticalResizeThrottle) {
+    cancelAnimationFrame(verticalResizeThrottle);
+    verticalResizeThrottle = null;
+  }
 };
 
 // Expose methods for external control
@@ -272,14 +520,20 @@ defineExpose({
   flex-direction: column;
   border-radius: 8px;
   overflow: hidden;
+  position: relative;
 }
 
 .viewport-main-row {
   flex: 1 1 auto;
   display: flex;
   position: relative;
-  min-height: 0;
-  max-height: calc(100% - var(--bottom-panel-height));
+  min-height: 200px;
+  height: calc(100% - var(--bottom-panel-height));
+  transition: height 0.1s ease;
+}
+
+.viewport-panel:has(.resize-handle.resizing) .viewport-main-row {
+  transition: none; /* Disable transition during resize */
 }
 
 .viewport-canvas-container {
@@ -294,6 +548,37 @@ defineExpose({
   justify-content: center;
 }
 
+.resize-handle {
+  width: 100%;
+  height: 10px;
+  background: transparent;
+  cursor: ns-resize;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.resize-handle:hover .resize-handle-line {
+  background: #555;
+  height: 3px;
+}
+
+.resize-handle.resizing .resize-handle-line {
+  background: #007acc;
+  height: 4px;
+  transition: none; /* Disable transition during resize */
+}
+
+.resize-handle-line {
+  width: 100%;
+  height: 2px;
+  background: #333;
+  transition: all 0.2s ease;
+}
+
 .viewport-bottom-bar {
   display: flex;
   flex-direction: row;
@@ -303,6 +588,11 @@ defineExpose({
   border-top: 1px solid #333;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
+  transition: height 0.1s ease;
+}
+
+.viewport-panel:has(.resize-handle.resizing) .viewport-bottom-bar {
+  transition: none; /* Disable transition during resize */
 }
 
 .viewport-bottom-left {
@@ -312,10 +602,15 @@ defineExpose({
   align-items: flex-start;
   justify-content: flex-start;
   flex-shrink: 0;
-  width: 300px;
+  width: var(--left-panel-width, 300px);
   height: 100%;
   overflow: hidden;
   position: relative;
+  transition: width 0.1s ease;
+}
+
+.viewport-panel:has(.vertical-resize-handle.resizing) .viewport-bottom-left {
+  transition: none; /* Disable transition during resize */
 }
 
 .viewport-bottom-content {
@@ -336,5 +631,36 @@ defineExpose({
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.01);
   width: 100%;
+}
+
+.vertical-resize-handle {
+  width: 10px;
+  height: 100%;
+  background: transparent;
+  cursor: ew-resize;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vertical-resize-handle:hover .vertical-resize-handle-line {
+  background: #555;
+  width: 3px;
+}
+
+.vertical-resize-handle.resizing .vertical-resize-handle-line {
+  background: #007acc;
+  width: 4px;
+  transition: none; /* Disable transition during resize */
+}
+
+.vertical-resize-handle-line {
+  width: 2px;
+  height: 100%;
+  background: #333;
+  transition: all 0.2s ease;
 }
 </style>

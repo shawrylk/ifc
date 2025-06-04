@@ -7,8 +7,7 @@ export function useIFCContainer() {
   const interactionStore = useInteractionStore();
   const ifcStore = useIFCStore();
   const threeStore = useThree();
-  const { setupHighlighting, focusOnSelectedItem, highlightSelectedItem, dispose } =
-    interactionStore;
+  const { setupHighlighting, focusOnSelectedItem, onItemSelected, dispose } = interactionStore;
 
   watch(
     () => ifcStore.isLoaded,
@@ -26,7 +25,7 @@ export function useIFCContainer() {
         const model = ifcStore.getFragmentsModels()?.models.list.values().next().value;
         if (model) {
           focusOnSelectedItem(threeStore, ifcStore, newSelectedId);
-          highlightSelectedItem(model, newSelectedId);
+          onItemSelected(newSelectedId);
         }
       }
     }
