@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { Ref, ref } from 'vue';
 import * as THREE from 'three';
 import * as FRAGS from '@thatopen/fragments';
 import { useThree } from '@/stores/threeStore';
@@ -24,40 +24,6 @@ interface RaycastThrottle {
   lastTime: number;
   timeout: number;
 }
-
-// Material definitions
-const selectionMaterial: FRAGS.MaterialDefinition = {
-  color: new THREE.Color(0x39ff14),
-  renderedFaces: FRAGS.RenderedFaces.TWO,
-  opacity: 1,
-  transparent: false,
-};
-
-const hoverMaterial: FRAGS.MaterialDefinition = {
-  color: new THREE.Color(0x72ff94),
-  renderedFaces: FRAGS.RenderedFaces.TWO,
-  opacity: 0.5,
-  transparent: true,
-};
-
-// Utility functions
-const highlight = async (
-  model: FRAGS.FragmentsModel,
-  id: number,
-  material: FRAGS.MaterialDefinition
-) => {
-  if (!id) return;
-  await model.highlight([id], material);
-};
-
-const resetHighlight = async (model: FRAGS.FragmentsModel) => {
-  await model.resetHighlight();
-};
-
-const resetHover = async (model: FRAGS.FragmentsModel, id: number) => {
-  if (!id) return;
-  await model.resetHighlight([id]);
-};
 
 const getModelInfo = async (
   ifc: ReturnType<typeof useIFCStore>,
@@ -97,6 +63,95 @@ const focusOnSelectedItem = async (
   }
 };
 
+let selectionMeshes: THREE.Mesh[] = [];
+let hoverMeshes: THREE.Mesh[] = [];
+
+const createHighlightMeshes = async (
+  model: FRAGS.FragmentsModel,
+  localId: number,
+  meshArray: THREE.Mesh[],
+  material: THREE.MeshBasicMaterial
+) => {
+  const geometriesArray = await model.getItemsGeometry([localId]);
+  for (const geometries of geometriesArray) {
+    for (const geometry of geometries) {
+      const indices: Uint16Array =
+        'indices' in geometry ? (geometry.indices as Uint16Array) : new Uint16Array();
+      const positions: Float32Array =
+        'positions' in geometry ? (geometry.positions as Float32Array) : new Float32Array();
+      const normals: Int16Array =
+        'normals' in geometry ? (geometry.normals as Int16Array) : new Int16Array();
+      const transform: THREE.Matrix4 = new THREE.Matrix4();
+      if ('transform' in geometry) {
+        if ('elements' in geometry.transform) {
+          transform.fromArray(geometry.transform.elements as number[]);
+        }
+      }
+
+      const tempGeometry = new THREE.BufferGeometry();
+      tempGeometry.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
+      tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      tempGeometry.setAttribute('normal', new THREE.Int16BufferAttribute(normals, 3));
+      const mesh = new THREE.Mesh(tempGeometry, material);
+      mesh.applyMatrix4(transform);
+      mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+
+      // Prevent highlight meshes from being detected by raycast
+      mesh.raycast = () => {};
+
+      model?.object.add(mesh);
+      meshArray.push(mesh);
+    }
+  }
+};
+
+const setHighlightObject = async (model: FRAGS.FragmentsModel, localId?: number) => {
+  // reset selection meshes
+  for (const mesh of selectionMeshes) {
+    model?.object.remove(mesh);
+  }
+  selectionMeshes.length = 0;
+
+  if (!localId) return;
+
+  const selectionMaterial = new THREE.MeshBasicMaterial({
+    color: 0x39ff14, // Green for selection
+    depthWrite: false,
+    depthTest: false,
+    opacity: 1,
+    transparent: false,
+  });
+
+  await createHighlightMeshes(model, localId, selectionMeshes, selectionMaterial);
+};
+
+const createSetHoverObject =
+  (highlightId: Ref<number | null>) => async (model: FRAGS.FragmentsModel, localId?: number) => {
+    // reset hover meshes
+    for (const mesh of hoverMeshes) {
+      model?.object.remove(mesh);
+    }
+    hoverMeshes.length = 0;
+
+    if (!localId) return;
+
+    // Don't show hover on already selected items
+    if (localId === highlightId.value) return;
+
+    // Avoid unnecessary work if clearing already empty hover
+    if (localId === undefined && hoverMeshes.length === 0) return;
+
+    const hoverMaterial = new THREE.MeshBasicMaterial({
+      color: 0x72ff94, // Light green for hover
+      depthWrite: false,
+      depthTest: false,
+      opacity: 0.5,
+      transparent: true,
+    });
+
+    await createHighlightMeshes(model, localId, hoverMeshes, hoverMaterial);
+  };
+
 export const useInteractionStore = defineStore('interaction', () => {
   const three = useThree();
   const ifc = useIFCStore();
@@ -107,6 +162,7 @@ export const useInteractionStore = defineStore('interaction', () => {
   const selectedInfo = ref<ModelInfo | null>(null);
   const highlightId = ref<number | null>(null);
   const hoveredId = ref<number | null>(null);
+  const setHoverObject = createSetHoverObject(highlightId);
 
   // Callbacks
   const selectionCallbacks = ref<SelectionCallback[]>([]);
@@ -127,21 +183,6 @@ export const useInteractionStore = defineStore('interaction', () => {
   const rafId = ref<number | null>(null);
   const raycastThrottleMap = ref<Map<FRAGS.FragmentsModel, RaycastThrottle>>(new Map());
 
-  const highlightSelectedItem = async (model: FRAGS.FragmentsModel, localId: number) => {
-    const fragmentsModels = ifc.getFragmentsModels();
-    if (!fragmentsModels) return;
-
-    const promises = [];
-    if (selectedId.value) {
-      promises.push(resetHighlight(model));
-    }
-
-    selectedId.value = localId;
-    promises.push(highlight(model, localId, selectionMaterial));
-    promises.push(fragmentsModels.update(true));
-    await Promise.all(promises);
-  };
-
   const onItemSelected = async (localId: number) => {
     if (!localId) return;
 
@@ -149,12 +190,6 @@ export const useInteractionStore = defineStore('interaction', () => {
     if (!modelInfo) return;
     selectedId.value = localId;
     selectedInfo.value = modelInfo;
-
-    const fragmentsModels = ifc.getFragmentsModels();
-    if (!fragmentsModels) return;
-    const currentModel = fragmentsModels.models.list.values().next().value;
-    if (!currentModel) return;
-    setHighlightObject(currentModel, localId);
 
     selectionCallbacks.value.forEach((callback) => {
       callback({ localId, modelInfo });
@@ -164,12 +199,6 @@ export const useInteractionStore = defineStore('interaction', () => {
   const onItemDeselected = () => {
     selectedId.value = null;
     selectedInfo.value = null;
-
-    const fragmentsModels = ifc.getFragmentsModels();
-    if (!fragmentsModels) return;
-    const currentModel = fragmentsModels.models.list.values().next().value;
-    if (!currentModel) return;
-    setHighlightObject(currentModel);
 
     deselectionCallbacks.value.forEach((callback) => {
       callback();
@@ -183,7 +212,6 @@ export const useInteractionStore = defineStore('interaction', () => {
 
   const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
     const { renderer, render } = three;
-    const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
 
@@ -207,112 +235,66 @@ export const useInteractionStore = defineStore('interaction', () => {
     if (rafId.value) {
       cancelAnimationFrame(rafId.value);
     }
+
     rafId.value = requestAnimationFrame(async () => {
-      const cameras = getCameras();
-      for (const camera of cameras) {
-        const result = await model.raycast({
-          camera: camera as CameraType,
-          mouse,
-          dom: container,
-        });
+      try {
+        const cameras = getCameras();
+        let newHoveredId: number | null = null;
 
-        const promises = [];
-        let newHoveredId = null;
+        // Find the first valid result from all cameras
+        for (const camera of cameras) {
+          const result = await model.raycast({
+            camera: camera as CameraType,
+            mouse,
+            dom: container,
+          });
 
-        if (result) {
-          // Check if the hovered item matches category filters
-          const matchesFilter = isItemInteractable(result.localId);
-
-          if (matchesFilter) {
-            newHoveredId = result.localId;
+          if (result) {
+            // Check if the hovered item matches category filters
+            const matchesFilter = isItemInteractable(result.localId);
+            if (matchesFilter) {
+              newHoveredId = result.localId;
+              break; // Stop at first valid result
+            }
           }
         }
 
-        if (newHoveredId && newHoveredId !== hoveredId.value) {
-          // Only hover if item matches category filter
-          if (newHoveredId !== highlightId.value) {
-            // Reset previous hover
-            if (hoveredId.value && hoveredId.value !== highlightId.value) {
-              promises.push(resetHover(model, hoveredId.value));
-            }
+        // Only update if hover state actually changed
+        if (newHoveredId !== hoveredId.value) {
+          hoveredId.value = newHoveredId;
+
+          // Update hover highlighting only if needed
+          if (newHoveredId && newHoveredId !== highlightId.value) {
             // Set new hover
-            hoveredId.value = newHoveredId;
-            promises.push(highlight(model, hoveredId.value, hoverMaterial));
-            promises.push(fragmentsModels?.update(true));
-            // change cursor to pointer
+            await setHoverObject(model, newHoveredId);
+            // Change cursor to pointer
             if (container) {
               container.style.cursor = 'pointer';
             }
+          } else {
+            // Clear hover
+            await setHoverObject(model);
+            // Change cursor to default
+            if (container) {
+              container.style.cursor = 'default';
+            }
           }
-        } else if (hoveredId.value && hoveredId.value !== highlightId.value) {
-          // Reset hover when mouse is not over any element or element doesn't match filter
-          promises.push(resetHover(model, hoveredId.value));
-          hoveredId.value = null;
-          promises.push(fragmentsModels?.update(true));
-          // change cursor to default
-          if (container) {
-            container.style.cursor = 'default';
-          }
+
+          // Render only once after state change
+          render(true);
         }
-
-        await Promise.all(promises);
+      } catch (error) {
+        console.error('Error in hover handling:', error);
       }
-      render(true);
     });
-  };
-
-  let depthMeshes: THREE.Mesh[] = [];
-
-  const setHighlightObject = async (model: FRAGS.FragmentsModel, localId?: number, opacity = 1) => {
-    const depthMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      depthWrite: false,
-      depthTest: false,
-      opacity: opacity,
-    });
-
-    // remove previous selection
-    for (const mesh of depthMeshes) {
-      model?.object.remove(mesh);
-    }
-    depthMeshes.length = 0;
-
-    if (localId === undefined) return;
-
-    const geometriesArray = await model.getItemsGeometry([localId]);
-    for (const geometries of geometriesArray) {
-      for (const geometry of geometries) {
-        const indices: Uint16Array =
-          'indices' in geometry ? (geometry.indices as Uint16Array) : new Uint16Array();
-        const positions: Float32Array =
-          'positions' in geometry ? (geometry.positions as Float32Array) : new Float32Array();
-        const normals: Int16Array =
-          'normals' in geometry ? (geometry.normals as Int16Array) : new Int16Array();
-        const transform: THREE.Matrix4 = new THREE.Matrix4();
-        if ('transform' in geometry) {
-          if ('elements' in geometry.transform) {
-            transform.fromArray(geometry.transform.elements as number[]);
-          }
-        }
-
-        const tempGeometry = new THREE.BufferGeometry();
-        tempGeometry.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
-        tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        tempGeometry.setAttribute('normal', new THREE.Int16BufferAttribute(normals, 3));
-        const mesh = new THREE.Mesh(tempGeometry, depthMaterial);
-        mesh.applyMatrix4(transform);
-        mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
-        model?.object.add(mesh);
-        depthMeshes.push(mesh);
-      }
-    }
   };
 
   const handleSelect = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
-    const { renderer } = three;
-    const fragmentsModels = ifc.getFragmentsModels();
+    const { renderer, forceUpdate } = three;
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
+    const fragmentsModels = ifc.getFragmentsModels();
+    if (!fragmentsModels) return;
 
     const cameras = getCameras();
     for (const camera of cameras) {
@@ -322,45 +304,33 @@ export const useInteractionStore = defineStore('interaction', () => {
         dom: container,
       });
 
-      const promises = [];
       if (result) {
         // Check if the selected item matches category filters
         const matchesFilter = isItemInteractable(result.localId);
 
-        if (matchesFilter) {
-          // Reset previous selection and hover
-          if (highlightId.value) {
-            promises.push(resetHighlight(model));
-          }
-          if (hoveredId.value) {
-            promises.push(resetHover(model, hoveredId.value));
-            hoveredId.value = null;
-          }
-
-          highlightId.value = result.localId;
-
-          promises.push(fragmentsModels?.update(true));
-          onItemSelected(highlightId.value);
-          break;
-        } else {
-          // Log when selection is blocked by filter
-          const category = categoryLookup.getCategoryByLocalId(result.localId);
-          console.log(
-            `Selection blocked: localId ${result.localId} (${category}) not in active filters`
-          );
+        if (!matchesFilter) continue;
+        if (hoveredId.value) {
+          setHoverObject(model); // Clear hover
+          hoveredId.value = null;
         }
-        // If item doesn't match filter, we don't select it but also don't deselect current selection
+
+        highlightId.value = result.localId;
+        setHighlightObject(model, result.localId); // Highlight the selected item
+
+        await fragmentsModels?.update(true);
+        onItemSelected(highlightId.value);
+        break;
       } else {
         // Reset selection only when clicking on empty space
         if (highlightId.value) {
-          promises.push(resetHighlight(model));
-          promises.push(fragmentsModels?.update(true));
+          setHighlightObject(model); // Clear selection
           highlightId.value = null;
           onItemDeselected();
         }
-        setHighlightObject(model);
+        setHoverObject(model); // Clear hover
+        await fragmentsModels?.update(true);
+        forceUpdate(null, fragmentsModels);
       }
-      await Promise.all(promises);
     }
   };
 
@@ -454,6 +424,25 @@ export const useInteractionStore = defineStore('interaction', () => {
       }
     });
 
+    // Clean up highlight meshes
+    const fragmentsModels = ifc.getFragmentsModels();
+    if (fragmentsModels) {
+      const currentModel = fragmentsModels.models.list.values().next().value;
+      if (currentModel) {
+        // Remove all depth meshes
+        for (const mesh of selectionMeshes) {
+          currentModel.object.remove(mesh);
+        }
+        selectionMeshes.length = 0;
+
+        // Remove all hover meshes
+        for (const mesh of hoverMeshes) {
+          currentModel.object.remove(mesh);
+        }
+        hoverMeshes.length = 0;
+      }
+    }
+
     // Clear all state
     eventHandlers.value.clear();
     selectedId.value = null;
@@ -493,7 +482,7 @@ export const useInteractionStore = defineStore('interaction', () => {
       if (fragmentsModels) {
         const currentModel = fragmentsModels.models.list.values().next().value;
         if (currentModel && hoveredId.value !== highlightId.value) {
-          resetHover(currentModel, hoveredId.value);
+          setHoverObject(currentModel); // Clear hover
           hoveredId.value = null;
           fragmentsModels.update(true);
         }
@@ -506,7 +495,8 @@ export const useInteractionStore = defineStore('interaction', () => {
       if (fragmentsModels) {
         const currentModel = fragmentsModels.models.list.values().next().value;
         if (currentModel) {
-          resetHighlight(currentModel);
+          setHighlightObject(currentModel); // Clear selection
+          setHoverObject(currentModel); // Clear hover
           highlightId.value = null;
           onItemDeselected();
           fragmentsModels.update(true);
@@ -558,7 +548,6 @@ export const useInteractionStore = defineStore('interaction', () => {
 
     // Methods
     getModelInfo,
-    highlightSelectedItem,
     focusOnSelectedItem,
     onItemSelected,
     onItemDeselected,

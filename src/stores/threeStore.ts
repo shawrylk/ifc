@@ -74,15 +74,38 @@ const store: ThreeStoreState = {
       const axesHelper = new THREE.AxesHelper(1);
       scene.add(axesHelper);
 
-      // renderer
+      // renderer with improved settings for cross-browser consistency
       const renderer = new THREE.WebGLRenderer({
         antialias: true,
         alpha: true,
         powerPreference: 'high-performance',
+        preserveDrawingBuffer: false, // Improves performance
+        premultipliedAlpha: false, // Better color accuracy
       });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(renderer.domElement);
+
+      // Set pixel ratio, but cap it to avoid performance issues on high-DPI displays
+      const pixelRatio = Math.min(window.devicePixelRatio, 2);
+      renderer.setPixelRatio(pixelRatio);
+
+      // Ensure container dimensions are properly calculated
+      const containerRect = container.getBoundingClientRect();
+      const width = containerRect.width || container.clientWidth || container.offsetWidth;
+      const height = containerRect.height || container.clientHeight || container.offsetHeight;
+
+      renderer.setSize(width, height);
+
+      // Ensure canvas positioning
+      const canvas = renderer.domElement;
+      canvas.style.position = 'absolute';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.display = 'block';
+
+      // Clear container and append canvas
+      container.innerHTML = '';
+      container.appendChild(canvas);
 
       // light
       const ambientLight = new THREE.AmbientLight(0xffffff, 1);
@@ -103,8 +126,8 @@ const store: ThreeStoreState = {
         region: {
           x: 0,
           y: 0,
-          width: container.clientWidth,
-          height: container.clientHeight,
+          width: width,
+          height: height,
         },
         container: container,
         initialPosition: new THREE.Vector3(5, 5, 5),
@@ -122,14 +145,24 @@ const store: ThreeStoreState = {
 
   handleResize: (viewerContainer: HTMLElement) => {
     if (!store.isInitialized || !store.mainViewport) return;
-    store.renderer!.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
-    store.mainViewport.updateRegion({
-      x: 0,
-      y: 0,
-      width: viewerContainer.clientWidth,
-      height: viewerContainer.clientHeight,
-    });
-    store.render(true);
+
+    // Get accurate container dimensions
+    const containerRect = viewerContainer.getBoundingClientRect();
+    const width = containerRect.width || viewerContainer.clientWidth || viewerContainer.offsetWidth;
+    const height =
+      containerRect.height || viewerContainer.clientHeight || viewerContainer.offsetHeight;
+
+    // Only resize if dimensions are valid
+    if (width > 0 && height > 0) {
+      store.renderer!.setSize(width, height);
+      store.mainViewport.updateRegion({
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
+      });
+      store.render(true);
+    }
   },
 
   render: (forceUpdate = false) => {
