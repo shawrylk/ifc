@@ -54,7 +54,7 @@
       </div>
 
       <!-- Custom Room Node -->
-      <template #node-room="{ data, id }">
+      <template #node-room="{ data }">
         <div class="room-node" :class="{ 'functional-room': data.isFunctionalRoom }">
           <!-- Connection handles -->
           <Handle id="left" type="target" :position="Position.Left" class="node-handle" />
@@ -372,10 +372,6 @@ const addRoomToFunctionalGroup = (nodeId: string, room: RoomData) => {
       totalArea: `${totalArea.toFixed(2)} m²`,
     },
   });
-};
-
-const removeNode = (nodeId: string) => {
-  removeNodes([nodeId]);
 };
 
 const updateNodeLabel = (nodeId: string, newLabel: string) => {
