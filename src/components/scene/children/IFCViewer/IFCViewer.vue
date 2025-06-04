@@ -56,12 +56,13 @@ onMounted(() => {
 });
 
 const handleDoubleClick = () => {
-  const { activeControls } = useThree();
+  const { mainViewport } = useThree();
+  if (!mainViewport) return;
   const ifcStore = useIFCStore();
   const fragmentsModels = ifcStore.getFragmentsModels();
   const currentModel = fragmentsModels?.models.list.values().next().value;
   if (!currentModel) return;
-  activeControls.fitToSphere(currentModel.box.getBoundingSphere(new THREE.Sphere()), true);
+  mainViewport.controls.fitToSphere(currentModel.box.getBoundingSphere(new THREE.Sphere()), true);
 };
 
 defineExpose({

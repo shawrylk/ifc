@@ -33,7 +33,7 @@ import * as THREE from 'three';
 import { Viewport } from '@/composables/Viewport';
 import { markRaw } from 'vue';
 import { useThree } from '@/stores/threeStore';
-import PlanViewsAndSpaces from './children/PlanViewsAndSpaces.vue';
+import PlanViewsAndSpaces from './children/PlanViewsAndSpaces/PlanViewsAndSpaces.vue';
 import { PlansManager } from '@/composables/PlansManager';
 import { useIFCStore } from '@/stores/ifcStore';
 
@@ -64,7 +64,7 @@ const isRendering = ref(true);
 const plansManager = ref<any>(null);
 const plans = ref<any[]>([]);
 const clock = new THREE.Clock();
-const ifcStore = useIFCStore();
+// const ifcStore = useIFCStore();
 
 // Configure viewports with initial positions
 const viewportConfigs: ViewportInitialConfig[] = [

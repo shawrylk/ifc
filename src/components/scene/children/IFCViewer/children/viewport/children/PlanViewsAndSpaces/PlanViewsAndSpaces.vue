@@ -20,10 +20,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import PlanViewsPanel from './PlanViewsPanel.vue';
-import SpacesPanel from './SpacesPanel.vue';
+import PlanViewsPanel from './children/PlanViewsPanel.vue';
+import SpacesPanel from './children/SpacesPanel.vue';
 
-const props = defineProps<{
+defineProps<{
   plansManager: any;
 }>();
 
@@ -69,7 +69,7 @@ const startResize = (event: MouseEvent | TouchEvent) => {
     // Apply constraints
     const minHeight = 120;
     const maxPlanHeight = totalHeight - minHeight;
-    const maxSpacesHeight = totalHeight - minHeight;
+    // const maxSpacesHeight = totalHeight - minHeight;
 
     newPlanHeight = Math.max(minHeight, Math.min(maxPlanHeight, newPlanHeight));
     newSpacesHeight = totalHeight - newPlanHeight;

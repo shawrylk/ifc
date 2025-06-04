@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import PlanViewsList from '../../plan-views-panel/children/PlanViewsList.vue';
+import PlanViewsList from '@/components/scene/children/IFCViewer/children/plan-views-panel/children/PlanViewsList.vue';
 
 const props = defineProps<{
   plansManager: any;

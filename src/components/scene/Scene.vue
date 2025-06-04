@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useThree } from '@/stores/threeStore';
-import IFCViewer from './children/IFCViewer.vue';
+import IFCViewer from './children/IFCViewer/IFCViewer.vue';
 
 const { initialize, handleResize, dispose } = useThree();
 const viewerContainer = ref<HTMLElement | null>(null);
