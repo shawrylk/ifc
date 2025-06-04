@@ -12,6 +12,9 @@
     <IconButton title="Plan views" @click="handlePlanViewsOpen">
       <i class="pi pi-map"></i>
     </IconButton>
+    <IconButton title="Category Filter" @click="handleCategoryFilterOpen">
+      <i class="pi pi-filter"></i>
+    </IconButton>
     <IconButton title="X-Ray" @click.prevent="handleXRayOpen" :disabled="!ifcStore.isLoaded">
       <i class="pi" :class="{ 'pi-eye-slash': !enableXRay, 'pi-eye': enableXRay }"></i>
     </IconButton>
@@ -27,6 +30,7 @@ import IconFileInput from '@/components/commons/IconFileInput.vue';
 import ObjectTreePanel from '../object-tree-panel/ObjectTreePanel.vue';
 import PropertiesPanel from '../properties-panel/PropertiesPanel.vue';
 import PlanViewsPanel from '../plan-views-panel/PlanViewsPanel.vue';
+import CategoryFilterPanel from '../category-filter-panel/CategoryFilterPanel.vue';
 import { useIFCStore } from '@/stores/ifcStore';
 import { onUnmounted, ref } from 'vue';
 import * as THREE from 'three';
@@ -38,6 +42,7 @@ const props = defineProps<{
   objectTreePanel: InstanceType<typeof ObjectTreePanel> | null;
   propertiesPanel: InstanceType<typeof PropertiesPanel> | null;
   planViewsPanel: InstanceType<typeof PlanViewsPanel> | null;
+  categoryFilterPanel: InstanceType<typeof CategoryFilterPanel> | null;
   viewportPanel: InstanceType<typeof ViewportPanel> | null;
 }>();
 
@@ -89,6 +94,12 @@ const handlePlanViewsOpen = () => {
   if (props.planViewsPanel) {
     props.planViewsPanel.handleDisplayChange(true);
     props.planViewsPanel.loadPlans();
+  }
+};
+
+const handleCategoryFilterOpen = () => {
+  if (props.categoryFilterPanel) {
+    props.categoryFilterPanel.handleDisplayChange(true);
   }
 };
 

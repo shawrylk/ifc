@@ -148,7 +148,7 @@ const initRenderer = async () => {
   // Clean up any existing renderer and viewports
   cleanup();
 
-  const { renderer, setRender } = useThree();
+  const { renderer, setRender, addSubViewport } = useThree();
   setRender(true);
   // Only append if not already in the canvas
   if (!rendererCanvas.value.contains(renderer.domElement)) {
@@ -164,6 +164,7 @@ const initRenderer = async () => {
       container: rendererCanvas.value!,
     });
     viewports.value.push(markRaw(viewport));
+    addSubViewport(viewport);
   });
 
   // Start rendering
@@ -232,6 +233,7 @@ watch(
 onUnmounted(() => {
   cleanup();
   resetRenderer();
+  viewports.value.forEach((viewport) => useThree().removeSubViewport(viewport));
 });
 
 // Helper to get pixel region for each viewport

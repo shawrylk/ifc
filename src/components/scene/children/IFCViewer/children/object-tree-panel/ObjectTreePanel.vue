@@ -15,6 +15,7 @@ import DraggablePanel from '@/components/commons/DraggablePanel.vue';
 import ObjectTree from './children/ObjectTree.vue';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useIFCStore } from '@/stores/ifcStore';
+import { useCategoryLookupStore } from '@/stores/categoryLookupStore';
 import { loadTreeData as loadTreeDataUtil, type TreeNode } from '@/utils/treeUtils';
 
 const props = defineProps<{
@@ -34,6 +35,7 @@ const categories = ref(props.categories || []);
 const treeData = ref<TreeNode[]>([]);
 const ifcStore = useIFCStore();
 const interactionStore = useInteractionStore();
+const categoryLookupStore = useCategoryLookupStore();
 
 const handleDisplayChange = (value: boolean) => {
   display.value = value;
@@ -41,12 +43,35 @@ const handleDisplayChange = (value: boolean) => {
 
 const loadTreeData = async () => {
   const fragmentsModels = ifcStore.getFragmentsModels();
-  if (!fragmentsModels) return;
+  if (!fragmentsModels) {
+    treeData.value = [];
+    categoryLookupStore.clearLookupTable();
+    return;
+  }
 
   const currentModel = fragmentsModels.models.list.values().next().value;
-  if (!currentModel) return;
+  if (!currentModel) {
+    treeData.value = [];
+    categoryLookupStore.clearLookupTable();
+    return;
+  }
 
-  treeData.value = await loadTreeDataUtil(currentModel, categories.value);
+  try {
+    const newTreeData = await loadTreeDataUtil(currentModel, categories.value);
+    treeData.value = newTreeData;
+
+    // Initialize category lookup store with the loaded tree data
+    if (newTreeData && newTreeData.length > 0) {
+      categoryLookupStore.buildLookupTable(newTreeData);
+      console.log('Category lookup store initialized with tree data');
+    } else {
+      categoryLookupStore.clearLookupTable();
+    }
+  } catch (error) {
+    console.error('Error loading tree data:', error);
+    treeData.value = [];
+    categoryLookupStore.clearLookupTable();
+  }
 };
 
 // Watch for categories changes and reload tree data
@@ -56,6 +81,22 @@ watch(
     categories.value = newCategories || [];
     if (display.value) {
       loadTreeData();
+    }
+  }
+);
+
+// Watch for tree data changes to update category filters
+watch(
+  () => treeData.value,
+  (newTreeData) => {
+    if (newTreeData && newTreeData.length > 0) {
+      // Update category filters based on current categories prop
+      if (categories.value && categories.value.length > 0) {
+        categoryLookupStore.setCategoryFilters(categories.value);
+      } else {
+        // If no specific categories are set, clear filters to show all
+        categoryLookupStore.clearCategoryFilters();
+      }
     }
   }
 );

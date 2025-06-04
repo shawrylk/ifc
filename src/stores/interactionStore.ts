@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import * as FRAGS from '@thatopen/fragments';
 import { useThree } from '@/stores/threeStore';
 import { useIFCStore } from '@/stores/ifcStore';
+import { useCategoryLookupStore } from '@/stores/categoryLookupStore';
+import { CameraType } from '@/types/three';
 
 // Types
 interface ModelInfo {
@@ -98,6 +100,7 @@ const focusOnSelectedItem = async (
 export const useInteractionStore = defineStore('interaction', () => {
   const three = useThree();
   const ifc = useIFCStore();
+  const categoryLookup = useCategoryLookupStore();
 
   // Selection state
   const selectedId = ref<number | null>(null);
@@ -161,8 +164,13 @@ export const useInteractionStore = defineStore('interaction', () => {
     });
   };
 
+  const getCameras = () => {
+    const { mainViewport, subViewports } = three;
+    return [mainViewport?.camera, ...subViewports.map((v) => v.camera)];
+  };
+
   const handleMouseMove = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
-    const { mainViewport, renderer, render } = three;
+    const { renderer, render } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
@@ -188,88 +196,111 @@ export const useInteractionStore = defineStore('interaction', () => {
       cancelAnimationFrame(rafId.value);
     }
     rafId.value = requestAnimationFrame(async () => {
-      const camera = mainViewport?.camera;
-      if (!camera) return;
-      const result = await model.raycast({
-        camera,
-        mouse,
-        dom: container,
-      });
+      const cameras = getCameras();
+      for (const camera of cameras) {
+        const result = await model.raycast({
+          camera: camera as CameraType,
+          mouse,
+          dom: container,
+        });
 
-      // Handle hover effect
-      const promises = [];
-      if (result) {
-        const newHoveredId = result.localId;
-        // Only apply hover if it's not the currently selected item
-        if (newHoveredId !== hoveredId.value && newHoveredId !== highlightId.value) {
-          // Reset previous hover
-          if (hoveredId.value && hoveredId.value !== highlightId.value) {
-            promises.push(resetHover(model, hoveredId.value));
+        const promises = [];
+        let newHoveredId = null;
+
+        if (result) {
+          // Check if the hovered item matches category filters
+          const matchesFilter = isItemInteractable(result.localId);
+
+          if (matchesFilter) {
+            newHoveredId = result.localId;
           }
-          // Set new hover
-          hoveredId.value = newHoveredId;
-          promises.push(highlight(model, hoveredId.value, hoverMaterial));
+        }
+
+        if (newHoveredId && newHoveredId !== hoveredId.value) {
+          // Only hover if item matches category filter
+          if (newHoveredId !== highlightId.value) {
+            // Reset previous hover
+            if (hoveredId.value && hoveredId.value !== highlightId.value) {
+              promises.push(resetHover(model, hoveredId.value));
+            }
+            // Set new hover
+            hoveredId.value = newHoveredId;
+            promises.push(highlight(model, hoveredId.value, hoverMaterial));
+            promises.push(fragmentsModels?.update(true));
+            // change cursor to pointer
+            if (container) {
+              container.style.cursor = 'pointer';
+            }
+          }
+        } else if (hoveredId.value && hoveredId.value !== highlightId.value) {
+          // Reset hover when mouse is not over any element or element doesn't match filter
+          promises.push(resetHover(model, hoveredId.value));
+          hoveredId.value = null;
           promises.push(fragmentsModels?.update(true));
-          // change cursor to pointer
+          // change cursor to default
           if (container) {
-            container.style.cursor = 'pointer';
+            container.style.cursor = 'default';
           }
         }
-      } else if (hoveredId.value && hoveredId.value !== highlightId.value) {
-        // Reset hover when mouse is not over any element
-        promises.push(resetHover(model, hoveredId.value));
-        hoveredId.value = null;
-        promises.push(fragmentsModels?.update(true));
-        // change cursor to default
-        if (container) {
-          container.style.cursor = 'default';
-        }
-      }
 
-      await Promise.all(promises);
+        await Promise.all(promises);
+      }
       render(true);
     });
   };
 
   const handleSelect = async (event: MouseEvent, model: FRAGS.FragmentsModel) => {
-    const { mainViewport, renderer } = three;
+    const { renderer } = three;
     const fragmentsModels = ifc.getFragmentsModels();
     const container = renderer?.domElement;
     const mouse = new THREE.Vector2(event.clientX, event.clientY);
 
-    const camera = mainViewport?.camera;
-    if (!camera) return;
-    const result = await model.raycast({
-      camera,
-      mouse,
-      dom: container,
-    });
+    const cameras = getCameras();
+    for (const camera of cameras) {
+      const result = await model.raycast({
+        camera: camera as CameraType,
+        mouse,
+        dom: container,
+      });
 
-    const promises = [];
-    if (result) {
-      // Reset previous selection and hover
-      if (highlightId.value) {
-        promises.push(resetHighlight(model));
-      }
-      if (hoveredId.value) {
-        promises.push(resetHover(model, hoveredId.value));
-        hoveredId.value = null;
-      }
+      const promises = [];
+      if (result) {
+        // Check if the selected item matches category filters
+        const matchesFilter = isItemInteractable(result.localId);
 
-      highlightId.value = result.localId;
-      promises.push(highlight(model, highlightId.value, selectionMaterial));
-      promises.push(fragmentsModels?.update(true));
-      onItemSelected(highlightId.value);
-    } else {
-      // Reset selection only when clicking on empty space
-      if (highlightId.value) {
-        promises.push(resetHighlight(model));
-        promises.push(fragmentsModels?.update(true));
-        highlightId.value = null;
-        onItemDeselected();
+        if (matchesFilter) {
+          // Reset previous selection and hover
+          if (highlightId.value) {
+            promises.push(resetHighlight(model));
+          }
+          if (hoveredId.value) {
+            promises.push(resetHover(model, hoveredId.value));
+            hoveredId.value = null;
+          }
+
+          highlightId.value = result.localId;
+          promises.push(highlight(model, highlightId.value, selectionMaterial));
+          promises.push(fragmentsModels?.update(true));
+          onItemSelected(highlightId.value);
+        } else {
+          // Log when selection is blocked by filter
+          const category = categoryLookup.getCategoryByLocalId(result.localId);
+          console.log(
+            `Selection blocked: localId ${result.localId} (${category}) not in active filters`
+          );
+        }
+        // If item doesn't match filter, we don't select it but also don't deselect current selection
+      } else {
+        // Reset selection only when clicking on empty space
+        if (highlightId.value) {
+          promises.push(resetHighlight(model));
+          promises.push(fragmentsModels?.update(true));
+          highlightId.value = null;
+          onItemDeselected();
+        }
       }
+      await Promise.all(promises);
     }
-    await Promise.all(promises);
   };
 
   const setupHighlighting = () => {
@@ -377,6 +408,86 @@ export const useInteractionStore = defineStore('interaction', () => {
     }
   };
 
+  // Enhanced helper method to check if an item can be interacted with based on filters
+  const isItemInteractable = (localId: number): boolean => {
+    const matchesFilter = categoryLookup.matchesCategoryFilter(localId);
+
+    // Debug logging for filter matching (can be removed in production)
+    if (!matchesFilter) {
+      const category = categoryLookup.getCategoryByLocalId(localId);
+      const activeFilters = categoryLookup.activeCategoryFiltersList;
+      console.debug(
+        `Item ${localId} (${category}) blocked by filters. Active: [${activeFilters.join(', ')}]`
+      );
+    }
+
+    return matchesFilter;
+  };
+
+  // Method to force refresh interaction filtering when filters change
+  const refreshInteractionFiltering = () => {
+    // Clear current hover if it no longer matches filters
+    if (hoveredId.value && !isItemInteractable(hoveredId.value)) {
+      const fragmentsModels = ifc.getFragmentsModels();
+      if (fragmentsModels) {
+        const currentModel = fragmentsModels.models.list.values().next().value;
+        if (currentModel && hoveredId.value !== highlightId.value) {
+          resetHover(currentModel, hoveredId.value);
+          hoveredId.value = null;
+          fragmentsModels.update(true);
+        }
+      }
+    }
+
+    // Clear current selection if it no longer matches filters
+    if (highlightId.value && !isItemInteractable(highlightId.value)) {
+      const fragmentsModels = ifc.getFragmentsModels();
+      if (fragmentsModels) {
+        const currentModel = fragmentsModels.models.list.values().next().value;
+        if (currentModel) {
+          resetHighlight(currentModel);
+          highlightId.value = null;
+          onItemDeselected();
+          fragmentsModels.update(true);
+        }
+      }
+    }
+  };
+
+  // Method to get current filter status info
+  const getFilterStatus = () => {
+    const activeFilters = categoryLookup.activeCategoryFiltersList;
+    const totalCategories = categoryLookup.availableCategoriesList.length;
+    const totalItems = categoryLookup.categoryCount;
+
+    return {
+      hasFilters: activeFilters.length > 0,
+      activeFilters: activeFilters,
+      totalCategories: totalCategories,
+      totalItems: totalItems,
+      isAllSelected: activeFilters.length === totalCategories,
+      selectedItemMatches: highlightId.value ? isItemInteractable(highlightId.value) : null,
+      hoveredItemMatches: hoveredId.value ? isItemInteractable(hoveredId.value) : null,
+    };
+  };
+
+  // Helper method to get category for currently selected item
+  const getSelectedItemCategory = (): string | null => {
+    if (!selectedId.value) return null;
+    return categoryLookup.getCategoryByLocalId(selectedId.value);
+  };
+
+  // Helper method to get category for currently hovered item
+  const getHoveredItemCategory = (): string | null => {
+    if (!hoveredId.value) return null;
+    return categoryLookup.getCategoryByLocalId(hoveredId.value);
+  };
+
+  // Helper method to check if an item can be interacted with based on filters
+  const canInteractWithItem = (localId: number): boolean => {
+    return isItemInteractable(localId);
+  };
+
   return {
     // State
     selectedId,
@@ -397,5 +508,13 @@ export const useInteractionStore = defineStore('interaction', () => {
     unregisterDeselectionCallback,
     clearAllCallbacks,
     dispose,
+
+    // Category filtering methods
+    getSelectedItemCategory,
+    getHoveredItemCategory,
+    canInteractWithItem,
+    isItemInteractable,
+    refreshInteractionFiltering,
+    getFilterStatus,
   };
 });

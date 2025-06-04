@@ -15,11 +15,14 @@ interface ThreeStoreState {
   isPaused: boolean;
   mode: ViewMode;
   mainViewport: Viewport | null;
+  subViewports: Viewport[];
   initialize(container: HTMLElement): void;
   handleResize(viewerContainer: HTMLElement): void;
   dispose(): void;
   render(forceUpdate?: boolean): void;
   setRender(pause: boolean): void;
+  addSubViewport(viewport: Viewport): void;
+  removeSubViewport(viewport: Viewport): void;
 }
 
 const startRenderLoop = () => {
@@ -39,6 +42,7 @@ const store: ThreeStoreState = {
   isPaused: false,
   mode: '3d',
   mainViewport: null,
+  subViewports: [],
 
   initialize: (container: HTMLElement) => {
     if (store.isInitialized) return;
@@ -141,6 +145,14 @@ const store: ThreeStoreState = {
 
   setRender: (pause: boolean) => {
     store.isPaused = pause;
+  },
+
+  addSubViewport: (viewport: Viewport) => {
+    store.subViewports.push(viewport);
+  },
+
+  removeSubViewport: (viewport: Viewport) => {
+    store.subViewports = store.subViewports.filter((v) => v !== viewport);
   },
 
   dispose: () => {
