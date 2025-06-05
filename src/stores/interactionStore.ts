@@ -5,6 +5,8 @@ import * as FRAGS from '@thatopen/fragments';
 import { useThree } from '@/stores/threeStore';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useCategoryLookupStore } from '@/stores/categoryLookupStore';
+import { useGeometryCacheStore } from '@/stores/geometryCacheStore';
+import { createMeshFromExtractedGeometry } from '@/utils/geometryUtils';
 import { CameraType } from '@/types/three';
 
 // Types
@@ -72,36 +74,24 @@ const createHighlightMeshes = async (
   meshArray: THREE.Mesh[],
   material: THREE.MeshBasicMaterial
 ) => {
-  const geometriesArray = await model.getItemsGeometry([localId]);
-  for (const geometries of geometriesArray) {
-    for (const geometry of geometries) {
-      const indices: Uint16Array =
-        'indices' in geometry ? (geometry.indices as Uint16Array) : new Uint16Array();
-      const positions: Float32Array =
-        'positions' in geometry ? (geometry.positions as Float32Array) : new Float32Array();
-      const normals: Int16Array =
-        'normals' in geometry ? (geometry.normals as Int16Array) : new Int16Array();
-      const transform: THREE.Matrix4 = new THREE.Matrix4();
-      if ('transform' in geometry) {
-        if ('elements' in geometry.transform) {
-          transform.fromArray(geometry.transform.elements as number[]);
-        }
-      }
+  const geometryCache = useGeometryCacheStore();
 
-      const tempGeometry = new THREE.BufferGeometry();
-      tempGeometry.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
-      tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      tempGeometry.setAttribute('normal', new THREE.Int16BufferAttribute(normals, 3));
-      const mesh = new THREE.Mesh(tempGeometry, material);
-      mesh.applyMatrix4(transform);
-      mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+  // Initialize cache if not already done
+  if (!geometryCache.isInitialized) {
+    geometryCache.initialize(model as any);
+  }
 
-      // Prevent highlight meshes from being detected by raycast
-      mesh.raycast = () => {};
+  // Get geometries from cache
+  const extractedGeometries = await geometryCache.getGeometriesForLocalId(localId);
 
-      model?.object.add(mesh);
-      meshArray.push(mesh);
-    }
+  for (const extractedGeometry of extractedGeometries) {
+    const mesh = createMeshFromExtractedGeometry(extractedGeometry, material);
+
+    // Prevent highlight meshes from being detected by raycast
+    mesh.raycast = () => {};
+
+    model?.object.add(mesh);
+    meshArray.push(mesh);
   }
 };
 

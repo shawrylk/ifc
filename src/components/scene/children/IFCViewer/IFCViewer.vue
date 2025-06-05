@@ -22,6 +22,14 @@
       :categoryFilterPanel="categoryFilterPanel"
       :viewportPanel="viewportPanel"
     />
+
+    <!-- Wireframe Processing Progress -->
+    <ProcessingProgress
+      :completed="processingStatus.completed"
+      :total="processingStatus.total"
+      :isProcessing="processingStatus.isProcessing"
+      :autoHide="true"
+    />
   </div>
 </template>
 
@@ -32,9 +40,11 @@ import ObjectTreePanel from './children/object-tree-panel/ObjectTreePanel.vue';
 import PlanViewsPanel from './children/plan-views-panel/PlanViewsPanel.vue';
 import CategoryFilterPanel from './children/category-filter-panel/CategoryFilterPanel.vue';
 import ViewerControls from './children/viewer-controller/ViewerControls.vue';
-import { ref, onMounted } from 'vue';
+import ProcessingProgress from '@/components/commons/ProcessingProgress.vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useIFCContainer } from '@/composables/useIFCContainer';
 import { useIFCStore } from '@/stores/ifcStore';
+import { useXRayStore } from '@/stores/xrayStore';
 import { useThree } from '@/stores/threeStore';
 import * as THREE from 'three';
 import ViewportPanel from './children/viewport/ViewportPanel.vue';
@@ -56,6 +66,14 @@ const categoryFilterPanelPosition = ref({ x: 370, y: 10 });
 const viewportPanelPosition = ref({ x: 50, y: -20 });
 const viewportPanelSize = ref({ width: 1800, height: 950 });
 
+// X-ray processing status
+const xrayStore = useXRayStore();
+const ifcStore = useIFCStore();
+
+const processingStatus = computed(() => {
+  return xrayStore.processingStatus;
+});
+
 onMounted(() => {
   propertiesPanelPosition.value = { x: window.innerWidth - 350, y: 10 };
   treePanelSize.value = { width: 320, height: window.innerHeight - 100 };
@@ -67,7 +85,6 @@ onMounted(() => {
 const handleDoubleClick = () => {
   const { mainViewport } = useThree();
   if (!mainViewport) return;
-  const ifcStore = useIFCStore();
   const fragmentsModels = ifcStore.getFragmentsModels();
   const currentModel = fragmentsModels?.models.list.values().next().value;
   if (!currentModel) return;

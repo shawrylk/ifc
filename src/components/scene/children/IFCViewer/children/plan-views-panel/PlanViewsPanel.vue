@@ -11,12 +11,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue';
+import { ref, watch, onUnmounted, computed } from 'vue';
 import DraggablePanel from '@/components/commons/DraggablePanel.vue';
 import PlanViewsList from './children/PlanViewsList.vue';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useXRayStore } from '@/stores/xrayStore';
-import { PlansManager } from '@/composables/PlansManager';
+import { usePlansManagerStore } from '@/stores/plansManagerStore';
 
 const props = defineProps<{
   position?: { x: number; y: number };
@@ -32,43 +32,37 @@ const display = ref(props.display ?? false);
 const position = ref(props.position ?? { x: 10, y: 10 });
 const ifcStore = useIFCStore();
 const xrayStore = useXRayStore();
-const plans = ref<any[]>([]);
+const plansManagerStore = usePlansManagerStore();
 const visiblePlanId = ref<number | null>(null);
-const plansManager = ref<PlansManager | null>(null);
 
-const loadPlansManager = () => {
-  if (plansManager.value) return plansManager.value;
-
-  const { getFragmentsModels } = ifcStore;
-  const fragmentsModels = getFragmentsModels();
-  if (!fragmentsModels) return null;
-
-  const manager = new PlansManager(fragmentsModels);
-  plansManager.value = manager;
-  return manager;
-};
+// Use computed to get plans from the store
+const plans = computed(() => plansManagerStore.plans);
 
 const handleDisplayChange = (value: boolean) => {
   display.value = value;
 };
 
 const loadPlans = async () => {
-  const plansManager = loadPlansManager();
-  if (!plansManager) return;
+  if (!plansManagerStore.isInitialized) {
+    console.warn('PlansManager not initialized');
+    return;
+  }
 
   try {
-    plans.value = await plansManager.generate();
+    await plansManagerStore.generatePlans();
   } catch (error) {
     console.error('Error loading plans:', error);
   }
 };
 
 const handlePlanClick = async (planId: number | null) => {
-  const plansManager = loadPlansManager();
-  if (!plansManager) return;
+  if (!plansManagerStore.isInitialized) {
+    console.warn('PlansManager not initialized');
+    return;
+  }
 
   try {
-    await plansManager.goTo(planId);
+    await plansManagerStore.goToPlan(planId);
 
     // Update XRay wireframe visibility for the selected storey using the store
     xrayStore.updateStoreyWireframeVisibility(planId);
@@ -101,14 +95,12 @@ watch(
   async (newValue) => {
     if (newValue) {
       await loadPlans();
-    } else {
-      // Clean up when IFC is unloaded
-      plansManager.value = null;
     }
+    // No need to clean up here since the stores handle cleanup
   }
 );
 
 onUnmounted(() => {
-  // No need to dispose XRayManager here since it's managed by the store
+  // No need to dispose anything here since the stores manage lifecycle
 });
 </script>

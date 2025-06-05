@@ -44,10 +44,10 @@ import PlanViewsPanel from '../plan-views-panel/PlanViewsPanel.vue';
 import CategoryFilterPanel from '../category-filter-panel/CategoryFilterPanel.vue';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useXRayStore } from '@/stores/xrayStore';
+import { usePlansManagerStore } from '@/stores/plansManagerStore';
 import { onUnmounted, ref, watch, computed } from 'vue';
 import debounce from 'lodash/debounce';
 import ViewportPanel from '../viewport/ViewportPanel.vue';
-import { PlansManager } from '@/composables/PlansManager';
 
 const props = defineProps<{
   objectTreePanel: InstanceType<typeof ObjectTreePanel> | null;
@@ -59,21 +59,17 @@ const props = defineProps<{
 
 const ifcStore = useIFCStore();
 const xrayStore = useXRayStore();
+const plansManagerStore = usePlansManagerStore();
 const { loadIFCFile, dispose } = ifcStore;
 const enableXRay = computed(() => xrayStore.isEnabled);
-const plansManager = ref<PlansManager | null>(null);
 
-// Initialize XRayManager when IFC is loaded
-const initializeXRayManager = async () => {
+// Initialize managers when IFC is loaded
+const initializeManagers = async () => {
   const fragmentsModels = ifcStore.getFragmentsModels();
   if (!fragmentsModels) return;
 
-  // Create PlansManager instance
-  const manager = new PlansManager(fragmentsModels);
-  plansManager.value = manager;
-
-  // Initialize XRayStore with the PlansManager
-  await xrayStore.initialize(fragmentsModels, manager);
+  // Initialize both stores with the same FragmentsModels
+  await xrayStore.initialize(fragmentsModels);
 };
 
 // Watch for IFC loading state
@@ -81,11 +77,10 @@ watch(
   () => ifcStore.isLoaded,
   async (isLoaded) => {
     if (isLoaded) {
-      await initializeXRayManager();
+      await initializeManagers();
     } else {
       // Clean up when IFC is unloaded
       xrayStore.dispose();
-      plansManager.value = null;
     }
   }
 );

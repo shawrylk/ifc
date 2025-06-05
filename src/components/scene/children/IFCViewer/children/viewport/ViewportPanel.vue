@@ -23,7 +23,10 @@
 
       <footer class="viewport-bottom-bar">
         <aside class="viewport-bottom-left">
-          <PlanViewsAndSpaces ref="planViewsAndSpaces" :plansManager="plansManager" />
+          <PlanViewsAndSpaces
+            ref="planViewsAndSpaces"
+            :plansManager="plansManagerStore.getManager()"
+          />
         </aside>
 
         <!-- Vertical resize handle -->
@@ -57,8 +60,8 @@ import { Viewport } from '@/composables/Viewport';
 import { markRaw } from 'vue';
 import { useThree } from '@/stores/threeStore';
 import PlanViewsAndSpaces from './children/PlanViewsAndSpaces/PlanViewsAndSpaces.vue';
-import { PlansManager } from '@/composables/PlansManager';
 import { useIFCStore } from '@/stores/ifcStore';
+import { usePlansManagerStore } from '@/stores/plansManagerStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import FlowChart from './children/FlowChart/FlowChart.vue';
 
@@ -84,7 +87,7 @@ const rendererCanvas = ref<HTMLCanvasElement | null>(null);
 const planViewsAndSpaces = ref<InstanceType<typeof PlanViewsAndSpaces> | null>(null);
 const viewports = shallowRef<Viewport[]>([]);
 const isRendering = ref(true);
-const plansManager = ref<any>(null);
+const plansManagerStore = usePlansManagerStore();
 const clock = new THREE.Clock();
 const flowChart = ref<InstanceType<typeof FlowChart> | null>(null);
 const interactionStore = useInteractionStore();
@@ -222,8 +225,8 @@ const setupResizeObserver = () => {
 const cleanup = () => {
   const { mainViewport } = useThree();
   stopRendering();
-  viewports.value.forEach((viewport) => plansManager.value?.reset(viewport));
-  plansManager.value?.reset(mainViewport);
+  viewports.value.forEach((viewport) => plansManagerStore.resetPlans(viewport));
+  plansManagerStore.resetPlans(mainViewport);
 
   // Dispose all viewports
   viewports.value.forEach((viewport) => viewport.dispose());
@@ -271,18 +274,6 @@ const stopRendering = () => {
   isRendering.value = false;
 };
 
-const loadPlanManager = async (): Promise<PlansManager | null> => {
-  if (plansManager.value) return plansManager.value;
-
-  const { getFragmentsModels } = useIFCStore();
-  const fragmentsModels = getFragmentsModels();
-  if (!fragmentsModels) return null;
-
-  const newPlansManager = new PlansManager(fragmentsModels);
-  plansManager.value = newPlansManager;
-  return newPlansManager;
-};
-
 const initRenderer = async () => {
   if (!rendererCanvas.value) return;
 
@@ -297,8 +288,11 @@ const initRenderer = async () => {
     return;
   }
 
-  // Load plans manager first
-  plansManager.value = await loadPlanManager();
+  // Ensure plans manager is initialized
+  if (!plansManagerStore.isInitialized) {
+    console.warn('PlansManager not initialized');
+    return;
+  }
 
   // Clean up any existing renderer and viewports
   cleanup();
@@ -390,7 +384,7 @@ watch(
 watch(
   () => planViewsAndSpaces.value?.visiblePlanId,
   async (newPlanId) => {
-    if (plansManager.value && planViewsAndSpaces.value && newPlanId !== undefined) {
+    if (plansManagerStore.isInitialized && planViewsAndSpaces.value && newPlanId !== undefined) {
       await Promise.all(
         viewports.value.map((viewport) => planViewsAndSpaces.value?.goToPlan(newPlanId, viewport))
       );
@@ -404,7 +398,7 @@ watch(
   () => ifcStore.isLoaded,
   (newValue) => {
     if (newValue) {
-      loadPlanManager();
+      initRenderer();
     }
   }
 );
