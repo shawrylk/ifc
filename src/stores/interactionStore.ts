@@ -191,6 +191,11 @@ export const useInteractionStore = defineStore('interaction', () => {
     selectedId.value = localId;
     selectedInfo.value = modelInfo;
 
+    const fragmentsModels = ifc.getFragmentsModels();
+    const currentModel = fragmentsModels?.models.list.values().next().value;
+    if (!currentModel || !localId) return null;
+    setHighlightObject(currentModel, localId); // Highlight the selected item
+
     selectionCallbacks.value.forEach((callback) => {
       callback({ localId, modelInfo });
     });
@@ -199,6 +204,10 @@ export const useInteractionStore = defineStore('interaction', () => {
   const onItemDeselected = () => {
     selectedId.value = null;
     selectedInfo.value = null;
+    const fragmentsModels = ifc.getFragmentsModels();
+    const currentModel = fragmentsModels?.models.list.values().next().value;
+    if (!currentModel) return null;
+    setHighlightObject(currentModel); // Clear selection
 
     deselectionCallbacks.value.forEach((callback) => {
       callback();
@@ -315,7 +324,6 @@ export const useInteractionStore = defineStore('interaction', () => {
         }
 
         highlightId.value = result.localId;
-        setHighlightObject(model, result.localId); // Highlight the selected item
 
         await fragmentsModels?.update(true);
         onItemSelected(highlightId.value);
@@ -323,7 +331,6 @@ export const useInteractionStore = defineStore('interaction', () => {
       } else {
         // Reset selection only when clicking on empty space
         if (highlightId.value) {
-          setHighlightObject(model); // Clear selection
           highlightId.value = null;
           onItemDeselected();
         }
