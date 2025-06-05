@@ -55,7 +55,13 @@
 
       <!-- Custom Room Node -->
       <template #node-room="{ data }">
-        <div class="room-node" :class="{ 'functional-room': data.isFunctionalRoom }">
+        <div
+          class="room-node"
+          :class="{
+            'functional-room': data.isFunctionalRoom,
+            [`level-${data.roomLevel || 0}`]: true,
+          }"
+        >
           <!-- Connection handles -->
           <Handle id="left" type="target" :position="Position.Left" class="node-handle" />
           <Handle id="right" type="source" :position="Position.Right" class="node-handle" />
@@ -63,6 +69,7 @@
           <div class="room-header">
             <span class="room-title">{{ data.label }}</span>
             <span class="ifc-id">ID: {{ data.localId }}</span>
+            <span class="room-level">L{{ (data.roomLevel ?? 0) + 1 }}</span>
           </div>
           <div v-if="data.rooms && data.rooms.length > 0" class="room-list">
             <div v-for="room in data.rooms" :key="room.id" class="room-item">
@@ -75,7 +82,7 @@
 
       <!-- Custom Functional Group Node -->
       <template #node-functional="{ data, id }">
-        <div class="functional-node">
+        <div class="functional-node" :class="[`level-${data.roomLevel || 1}`]">
           <!-- Connection handles -->
           <Handle id="left" type="target" :position="Position.Left" class="node-handle" />
           <Handle id="right" type="source" :position="Position.Right" class="node-handle" />
@@ -87,10 +94,12 @@
               placeholder="Functional Space Name"
               @blur="updateNodeLabel(id, data.label)"
             />
+            <span class="room-level">L{{ (data.roomLevel ?? 1) + 1 }}</span>
           </div>
           <div class="functional-content">
             <div class="room-count">{{ data.roomCount || 0 }} rooms</div>
             <div v-if="data.totalArea" class="total-area">{{ data.totalArea }}</div>
+            <div v-if="data.mergedMeshId" class="mesh-info">Merged Geometry</div>
           </div>
         </div>
       </template>
@@ -120,6 +129,60 @@
       <div v-if="showContextMenu" class="context-menu-overlay" @click="hideContextMenu"></div>
     </VueFlow>
 
+    <!-- Flow Chart Controls -->
+    <div class="flow-chart-controls">
+      <div class="control-group">
+        <button @click="saveCurrentFlowChart" class="control-btn save-btn" title="Save Flow Chart">
+          💾 Save
+        </button>
+        <button @click="showLoadDialog = true" class="control-btn load-btn" title="Load Flow Chart">
+          📂 Load
+        </button>
+        <button @click="createNew" class="control-btn new-btn" title="New Flow Chart">
+          ✨ New
+        </button>
+      </div>
+      <div class="flow-chart-name">
+        <input
+          v-model="flowChartStore.currentName"
+          class="name-input"
+          placeholder="Flow Chart Name"
+          @blur="autoSave"
+        />
+      </div>
+    </div>
+
+    <!-- Load Dialog -->
+    <div v-if="showLoadDialog" class="load-dialog-overlay" @click="showLoadDialog = false">
+      <div class="load-dialog" @click.stop>
+        <div class="dialog-header">
+          <h3>Load Flow Chart</h3>
+          <button @click="showLoadDialog = false" class="close-btn">×</button>
+        </div>
+        <div class="dialog-content">
+          <div v-if="savedFlowCharts.length === 0" class="no-saved-charts">
+            No saved flow charts found.
+          </div>
+          <div v-else class="saved-charts-list">
+            <div
+              v-for="chart in savedFlowCharts"
+              :key="chart.name"
+              class="chart-item"
+              @click="loadSelectedFlowChart(chart)"
+            >
+              <div class="chart-info">
+                <div class="chart-name">{{ chart.name }}</div>
+                <div class="chart-meta">
+                  {{ chart.nodes.length }} nodes • Modified: {{ formatDate(chart.modifiedAt) }}
+                </div>
+              </div>
+              <button @click.stop="deleteChart(chart)" class="delete-chart-btn">🗑️</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Helper text at bottom -->
     <div v-if="showHelpText && nodes.length > 0" class="help-text-bottom">
       <div class="help-content">
@@ -132,12 +195,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { VueFlow, useVueFlow, Position } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { Handle } from '@vue-flow/core';
 import type { Node, Edge } from '@vue-flow/core';
+import { roomMerger } from '@/utils/roomMerger';
+import { useFlowChartStore } from '@/stores/flowChartStore';
 
 interface RoomData {
   id: string;
@@ -154,9 +219,14 @@ interface NodeData {
   totalArea?: string;
   localId?: number;
   area?: string;
+  roomLevel?: number; // Track the room hierarchy level (1, 2, 3)
+  mergedMeshId?: string; // Reference to the merged Three.js mesh
 }
 
 const { addNodes, addEdges, removeNodes, updateNode, getNode, getNodes, project } = useVueFlow();
+
+// Use flow chart store
+const flowChartStore = useFlowChartStore();
 
 const nodes = ref<Node<NodeData>[]>([]);
 const edges = ref<Edge[]>([]);
@@ -165,6 +235,10 @@ const showContextMenu = ref(false);
 const contextMenuPosition = ref({ x: 0, y: 0 });
 const selectedNodes = ref<Node<NodeData>[]>([]);
 const showHelpText = ref(true);
+const showLoadDialog = ref(false);
+
+// Computed properties for saved flow charts
+const savedFlowCharts = computed(() => flowChartStore.getAllFlowCharts());
 
 let nodeId = 0;
 const getNodeId = () => `node_${++nodeId}`;
@@ -304,6 +378,7 @@ const createRoomNode = (room: RoomData, position: { x: number; y: number }) => {
       localId: room.localId,
       area: room.area,
       rooms: [room],
+      roomLevel: 0, // Default IFCSPACE rooms are level 0
     },
     sourcePosition: Position.Left,
     targetPosition: Position.Right,
@@ -312,7 +387,11 @@ const createRoomNode = (room: RoomData, position: { x: number; y: number }) => {
   addNodes([newNode]);
 };
 
-const createFunctionalGroup = (rooms: RoomData[], position: { x: number; y: number }) => {
+const createFunctionalGroup = async (
+  rooms: RoomData[],
+  position: { x: number; y: number },
+  level: number = 1
+) => {
   const totalArea = rooms.reduce((sum, room) => {
     const area = parseFloat(room.area?.replace(/[^\d.]/g, '') || '0');
     return sum + area;
@@ -324,16 +403,33 @@ const createFunctionalGroup = (rooms: RoomData[], position: { x: number; y: numb
     y: position.y - 60, // Half of typical functional node height (120px)
   };
 
+  // Create merged geometry using room merger directly
+  let mergedMeshId: string | undefined;
+  if (rooms.length > 0) {
+    try {
+      const roomIds = rooms.map((room) => room.localId);
+      const mergedMesh = await roomMerger.createMergedRoomGeometry(roomIds, level);
+      if (mergedMesh) {
+        mergedMeshId = mergedMesh.name;
+        console.log(`✅ Created merged geometry for functional group level ${level + 1}`);
+      }
+    } catch (error) {
+      console.error('Failed to create merged geometry:', error);
+    }
+  }
+
   const newNode: Node<NodeData> = {
     id: getNodeId(),
     type: 'functional',
     position: adjustedPosition,
     data: {
-      label: 'Functional Space',
+      label: `Functional Space L${level + 1}`,
       isFunctionalRoom: true,
       rooms,
       roomCount: rooms.length,
       totalArea: `${totalArea.toFixed(2)} m²`,
+      roomLevel: level,
+      mergedMeshId,
     },
     sourcePosition: Position.Left,
     targetPosition: Position.Right,
@@ -345,6 +441,8 @@ const createFunctionalGroup = (rooms: RoomData[], position: { x: number; y: numb
     id: newNode.id,
     rooms,
     totalArea,
+    roomLevel: level,
+    mergedMeshId,
   });
 
   return newNode.id;
@@ -434,16 +532,21 @@ const connectNodes = (sourceId: string, targetId: string) => {
 };
 
 // Group selected rooms into functional space
-const groupSelectedNodes = () => {
+const groupSelectedNodes = async () => {
   if (!canGroupSelectedNodes.value) return;
 
-  // Extract room data from selected nodes
+  // Extract room data from selected nodes and determine the new level
   const roomsToGroup: RoomData[] = [];
   let totalX = 0;
   let totalY = 0;
   let rightmostX = 0;
+  let maxLevel = 0; // Track the highest level among selected nodes
 
   selectedNodes.value.forEach((node) => {
+    // Determine the level of this node
+    const nodeLevel = node.data?.roomLevel || 0;
+    maxLevel = Math.max(maxLevel, nodeLevel);
+
     if (node.data && node.data.rooms) {
       roomsToGroup.push(...node.data.rooms);
     } else if (node.type === 'room' && node.data) {
@@ -477,21 +580,51 @@ const groupSelectedNodes = () => {
     y: centerY,
   };
 
+  // Determine the new level (increment from the highest selected level)
+  const newLevel = Math.min(maxLevel + 1, 2); // Cap at level 2 (which displays as level 3)
+
   // Store selected node IDs for connecting arrows
   const selectedNodeIds = selectedNodes.value.map((node) => node.id);
 
-  // Create functional group at the calculated position
-  const functionalNodeId = createFunctionalGroup(roomsToGroup, functionalNodePosition);
+  try {
+    // Create functional group at the calculated position
+    const functionalNodeId = await createFunctionalGroup(
+      roomsToGroup,
+      functionalNodePosition,
+      newLevel
+    );
 
-  // Create arrows connecting each selected node to the new functional group
-  selectedNodeIds.forEach((nodeId) => {
-    connectNodes(nodeId, functionalNodeId);
-  });
+    // Create arrows connecting each selected node to the new functional group
+    selectedNodeIds.forEach((nodeId) => {
+      connectNodes(nodeId, functionalNodeId);
+    });
+
+    console.log(
+      `🔗 Created functional group at level ${newLevel + 1} with ${roomsToGroup.length} rooms`
+    );
+  } catch (error) {
+    console.error('Failed to create functional group:', error);
+  }
 
   // Clear selection and hide context menu
   clearSelection();
   hideContextMenu();
 };
+
+// Watch for changes in nodes and edges to update the store
+watch(
+  [nodes, edges],
+  ([newNodes, newEdges]) => {
+    flowChartStore.updateCurrentState(newNodes, newEdges);
+  },
+  { deep: true }
+);
+
+// Initialize from store if available
+if (flowChartStore.currentNodes.length > 0 || flowChartStore.currentEdges.length > 0) {
+  nodes.value = [...flowChartStore.currentNodes];
+  edges.value = [...flowChartStore.currentEdges];
+}
 
 // Expose methods for parent component
 defineExpose({
@@ -501,7 +634,23 @@ defineExpose({
   clearFlow: () => {
     nodes.value = [];
     edges.value = [];
+    flowChartStore.updateCurrentState([], []);
   },
+  // Store operations
+  saveFlowChart: (name?: string) => flowChartStore.saveCurrentFlowChart(name),
+  loadFlowChart: (flowChartId: string) => {
+    const success = flowChartStore.loadFlowChart(flowChartId);
+    if (success) {
+      nodes.value = [...flowChartStore.currentNodes];
+      edges.value = [...flowChartStore.currentEdges];
+    }
+    return success;
+  },
+  createNewFlowChart: (name?: string) => flowChartStore.createNewFlowChart(name),
+  getAllFlowCharts: () => flowChartStore.getAllFlowCharts(),
+  exportFlowChart: (flowChartId: string) => flowChartStore.exportFlowChart(flowChartId),
+  importFlowChart: (jsonData: string) => flowChartStore.importFlowChart(jsonData),
+  getFlowChartStats: () => flowChartStore.getStats(),
 });
 
 // Handle selection changes
@@ -547,6 +696,60 @@ const deleteSelectedNodes = () => {
 const clearSelection = () => {
   selectedNodes.value = [];
   hideContextMenu();
+};
+
+// Flow chart store operations
+const saveCurrentFlowChart = () => {
+  flowChartStore.saveCurrentFlowChart();
+};
+
+const autoSave = () => {
+  if (flowChartStore.currentFlowChartId) {
+    flowChartStore.saveCurrentFlowChart(flowChartStore.currentName);
+  }
+};
+
+const createNew = () => {
+  const name = `Flow Chart ${new Date().toLocaleDateString()}`;
+  flowChartStore.createNewFlowChart(name);
+  nodes.value = [];
+  edges.value = [];
+  showLoadDialog.value = false;
+};
+
+const loadSelectedFlowChart = (chart: any) => {
+  // Find the flow chart ID by comparing the chart data
+  const flowChartId = Array.from(flowChartStore.savedFlowCharts.keys()).find((id) => {
+    const savedChart = flowChartStore.savedFlowCharts.get(id);
+    return savedChart?.name === chart.name && savedChart?.modifiedAt === chart.modifiedAt;
+  });
+
+  if (flowChartId) {
+    const success = flowChartStore.loadFlowChart(flowChartId);
+    if (success) {
+      nodes.value = [...flowChartStore.currentNodes];
+      edges.value = [...flowChartStore.currentEdges];
+    }
+  }
+  showLoadDialog.value = false;
+};
+
+const deleteChart = (chart: any) => {
+  if (confirm(`Are you sure you want to delete "${chart.name}"?`)) {
+    // Find the flow chart ID
+    const flowChartId = Array.from(flowChartStore.savedFlowCharts.keys()).find((id) => {
+      const savedChart = flowChartStore.savedFlowCharts.get(id);
+      return savedChart?.name === chart.name && savedChart?.modifiedAt === chart.modifiedAt;
+    });
+
+    if (flowChartId) {
+      flowChartStore.deleteFlowChart(flowChartId);
+    }
+  }
+};
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleString();
 };
 </script>
 
@@ -598,6 +801,8 @@ const clearSelection = () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .room-title {
@@ -642,6 +847,45 @@ const clearSelection = () => {
   font-weight: 500;
 }
 
+/* Room level indicator */
+.room-level {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Level-specific styling */
+.level-0 {
+  border-left: 4px solid #4ade80; /* Green for level 1 (index 0) */
+}
+
+.level-1 {
+  border-left: 4px solid #3b82f6; /* Blue for level 2 (index 1) */
+}
+
+.level-2 {
+  border-left: 4px solid #a855f7; /* Purple for level 3 (index 2) */
+}
+
+.level-0 .room-level {
+  background: #4ade80;
+  color: #1f2937;
+}
+
+.level-1 .room-level {
+  background: #3b82f6;
+  color: white;
+}
+
+.level-2 .room-level {
+  background: #a855f7;
+  color: white;
+}
+
 /* Functional Node Styles */
 .functional-node {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -658,6 +902,8 @@ const clearSelection = () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .functional-title {
@@ -690,6 +936,15 @@ const clearSelection = () => {
   font-size: 12px;
   color: #68d391;
   font-weight: 500;
+}
+
+.mesh-info {
+  font-size: 10px;
+  color: #fbbf24;
+  font-weight: 500;
+  background: rgba(251, 191, 36, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 /* Vue Flow specific styles */
@@ -987,6 +1242,203 @@ const clearSelection = () => {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/* Flow Chart Controls */
+.flow-chart-controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  gap: 8px;
+}
+
+.control-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.control-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.save-btn:hover {
+  background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
+}
+
+.load-btn:hover {
+  background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%);
+}
+
+.new-btn:hover {
+  background: linear-gradient(135deg, #ff9800 0%, #ffb74d 100%);
+}
+
+.flow-chart-name {
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.name-input {
+  background: transparent;
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 200px;
+}
+
+.name-input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.name-input::placeholder {
+  color: #aaa;
+}
+
+/* Load Dialog */
+.load-dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.load-dialog {
+  background: #2d3748;
+  border-radius: 12px;
+  min-width: 500px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #4a5568;
+}
+
+.dialog-header h3 {
+  color: white;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #a0aec0;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: #4a5568;
+  color: white;
+}
+
+.dialog-content {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.no-saved-charts {
+  text-align: center;
+  color: #a0aec0;
+  padding: 40px 20px;
+  font-size: 16px;
+}
+
+.saved-charts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #1a1a1a;
+  border: 1px solid #4a5568;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chart-item:hover {
+  background: #2a2a2a;
+  border-color: #667eea;
+  transform: translateY(-1px);
+}
+
+.chart-info {
+  flex: 1;
+}
+
+.chart-name {
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.chart-meta {
+  color: #a0aec0;
+  font-size: 12px;
+}
+
+.delete-chart-btn {
+  background: none;
+  border: none;
+  color: #e53e3e;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.delete-chart-btn:hover {
+  background: rgba(229, 62, 62, 0.2);
+  transform: scale(1.1);
 }
 
 /* Node handle styles */

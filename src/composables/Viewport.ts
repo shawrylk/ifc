@@ -12,11 +12,12 @@ export interface ViewportConfig {
   container: HTMLElement;
   defaultMode?: ViewportMode;
   margin?: number;
+  visibleLayers?: number[]; // Array of layer numbers that should be visible
 }
 
 export enum ViewportMode {
-  THREE_D = '3d',
   TWO_D = '2d',
+  THREE_D = '3d',
 }
 
 export class Viewport {
@@ -37,6 +38,7 @@ export class Viewport {
     this.container = config.container;
     this.scene = useThree().scene;
     this.margin = config.margin ?? 0;
+
     // 2D camera
     this.camera2d = new THREE.OrthographicCamera(
       config.region.width / -2,
@@ -46,6 +48,7 @@ export class Viewport {
       0.1,
       1000
     );
+
     // 3D camera
     this.camera3d = new THREE.PerspectiveCamera(
       75,
@@ -53,6 +56,12 @@ export class Viewport {
       0.1,
       1000
     );
+
+    // Configure camera layers if specified
+    if (config.visibleLayers && config.visibleLayers.length > 0) {
+      this.setVisibleLayers(config.visibleLayers);
+    }
+
     // 2D controls
     this.controls2d = new CameraControls(this.camera2d, this.container);
     this.controls2d.mouseButtons.left = CameraControls.ACTION.NONE;
@@ -173,6 +182,43 @@ export class Viewport {
       // Always render the scene
       this.renderer.render(this.scene, activeCamera);
     }
+  }
+
+  /**
+   * Set which layers should be visible in this viewport using Three.js camera layers
+   */
+  public setVisibleLayers(layers: number[]) {
+    // Clear all layers first
+    this.camera2d.layers.disableAll();
+    this.camera3d.layers.disableAll();
+
+    if (layers.length === 0) {
+      // If no layers specified, enable all layers (default behavior)
+      this.camera2d.layers.enableAll();
+      this.camera3d.layers.enableAll();
+    } else {
+      // Enable only the specified layers
+      layers.forEach((layer) => {
+        this.camera2d.layers.enable(layer);
+        this.camera3d.layers.enable(layer);
+      });
+    }
+  }
+
+  /**
+   * Get the currently visible layers for this viewport
+   */
+  public getVisibleLayers(): number[] {
+    const layers: number[] = [];
+    // Check which layers are enabled (0-31)
+    for (let i = 0; i < 32; i++) {
+      const testLayer = new THREE.Layers();
+      testLayer.set(i);
+      if (this.camera3d.layers.test(testLayer)) {
+        layers.push(i);
+      }
+    }
+    return layers;
   }
 
   public switchMode(mode: ViewportMode) {

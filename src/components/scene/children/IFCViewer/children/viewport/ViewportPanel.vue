@@ -7,7 +7,20 @@
   >
     <section class="viewport-panel">
       <div class="viewport-main-row">
-        <div ref="rendererCanvas" class="viewport-canvas-container"></div>
+        <div ref="rendererCanvas" class="viewport-canvas-container">
+          <!-- Viewport labels -->
+          <div class="viewport-labels">
+            <div class="viewport-label" :style="{ left: '16.66%' }">
+              <span class="label-text">Room Level 1</span>
+            </div>
+            <div class="viewport-label" :style="{ left: '50%' }">
+              <span class="label-text">Room Level 2</span>
+            </div>
+            <div class="viewport-label" :style="{ left: '83.33%' }">
+              <span class="label-text">Room Level 3</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Resize handle -->
@@ -64,10 +77,13 @@ import { useIFCStore } from '@/stores/ifcStore';
 import { usePlansManagerStore } from '@/stores/plansManagerStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import FlowChart from './children/FlowChart/FlowChart.vue';
+import { useGeometryCacheStore } from '@/stores/geometryCacheStore';
 
 interface ViewportInitialConfig {
   initialPosition?: THREE.Vector3;
   initialTarget?: THREE.Vector3;
+  visibleLayers?: number[];
+  name?: string;
 }
 
 const props = defineProps<{
@@ -104,11 +120,26 @@ const leftPanelWidth = ref(300);
 const verticalResizeStartX = ref(0);
 const verticalResizeStartWidth = ref(0);
 
-// Configure viewports with initial positions
+// Configure viewports with initial positions and layer visibility
 const viewportConfigs: ViewportInitialConfig[] = [
-  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
-  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
-  { initialPosition: new THREE.Vector3(0, 25, 0), initialTarget: new THREE.Vector3(0, 0, 0) },
+  {
+    initialPosition: new THREE.Vector3(0, 25, 0),
+    initialTarget: new THREE.Vector3(0, 0, 0),
+    visibleLayers: [0], // Show room level 1 (default IFCSPACE rooms)
+    name: 'Room Level 1',
+  },
+  {
+    initialPosition: new THREE.Vector3(0, 25, 0),
+    initialTarget: new THREE.Vector3(0, 0, 0),
+    visibleLayers: [0, 1], // Show room level 2 (merged rooms)
+    name: 'Room Level 2',
+  },
+  {
+    initialPosition: new THREE.Vector3(0, 25, 0),
+    initialTarget: new THREE.Vector3(0, 0, 0),
+    visibleLayers: [0, 2], // Show room level 3 (merged level 2 rooms)
+    name: 'Room Level 3',
+  },
 ];
 
 const handleFlowNodeClick = (nodeData: any) => {
@@ -307,7 +338,7 @@ const initRenderer = async () => {
   // Ensure renderer is sized to container
   renderer.setSize(containerRect.width, containerRect.height);
 
-  // Initialize viewports with actual container dimensions
+  // Initialize viewports with actual container dimensions and layer configurations
   viewportConfigs.forEach((config, index) => {
     const viewport = new Viewport({
       ...config,
@@ -315,9 +346,15 @@ const initRenderer = async () => {
       region: getActualViewportRegion(index, containerRect),
       container: rendererCanvas.value!,
       margin: 10,
+      visibleLayers: config.visibleLayers, // Pass layer configuration
     });
     viewports.value.push(markRaw(viewport));
     addSubViewport(viewport);
+
+    // Log viewport configuration for debugging
+    console.log(
+      `Viewport ${index + 1} (${config.name}): Layers ${config.visibleLayers?.length ? config.visibleLayers.join(', ') : 'All'}`
+    );
   });
 
   // Set up resize observer for dynamic size changes
@@ -394,13 +431,118 @@ watch(
   }
 );
 
+/**
+ * Initialize geometry cache store and assign IFCSPACE objects to layer 0 (room level 1)
+ */
+const initializeGeometryAndLayers = async () => {
+  if (!plansManagerStore.isInitialized) {
+    console.warn('PlansManager not initialized for layer assignment');
+    return;
+  }
+
+  const fragmentsModels = ifcStore.getFragmentsModels();
+  if (!fragmentsModels?.models?.list) return;
+
+  const currentModel = fragmentsModels.models.list.values().next().value;
+  if (!currentModel) return;
+
+  try {
+    // Initialize geometry cache store first
+    const geometryCacheStore = useGeometryCacheStore();
+    geometryCacheStore.initialize(currentModel);
+
+    // Get all IFCSPACE objects (rooms)
+    const spaces = await currentModel.getItemsOfCategory('IFCSPACE');
+    if (!spaces) {
+      console.log('No IFCSPACE objects found');
+      return;
+    }
+
+    console.log('🏗️ Assigning IFCSPACE objects to layer 0 (room level 1)...');
+    let assignedCount = 0;
+
+    // Assign all IFCSPACE objects to layer 0 (room level 1)
+    for (const [_, space] of Object.entries(spaces)) {
+      const spaceData = space as any;
+      const spaceId = spaceData._localId;
+
+      // Find the Three.js mesh for this space
+      const mesh = findMeshByIfcId(currentModel, spaceId);
+      if (mesh) {
+        mesh.layers.set(0); // All IFCSPACE objects go to layer 0 (room level 1)
+        assignedCount++;
+      }
+    }
+
+    console.log(`✅ IFCSPACE assignment completed: ${assignedCount} rooms assigned to layer 0`);
+    console.log(`✅ Geometry cache store initialized successfully`);
+  } catch (error) {
+    console.error('❌ Error initializing geometry and layers:', error);
+  }
+};
+
+/**
+ * Extract layer number from storey name
+ */
+// const extractLayerFromStoreyName = (name: string): number | null => {
+//   // Common patterns for floor/level naming
+//   const patterns = [
+//     /level\s*(\d+)/i,
+//     /floor\s*(\d+)/i,
+//     /storey\s*(\d+)/i,
+//     /l\s*0*(\d+)/i,
+//     /^(\d+)(?:st|nd|rd|th)?\s*floor/i,
+//     /(\d+)/, // Fallback: any number
+//   ];
+
+//   for (const pattern of patterns) {
+//     const match = name.match(pattern);
+//     if (match) {
+//       return parseInt(match[1], 10);
+//     }
+//   }
+
+//   return null;
+// };
+
+/**
+ * Find Three.js mesh by IFC ID using fragments
+ */
+const findMeshByIfcId = (model: any, ifcId: number): THREE.Mesh | null => {
+  try {
+    // Try to get the fragment for this IFC ID
+    if (model.getItemFragment) {
+      const fragment = model.getItemFragment(ifcId);
+      if (fragment && fragment.mesh) {
+        return fragment.mesh;
+      }
+    }
+
+    // Alternative approach: search through fragments
+    if (model.fragments) {
+      for (const fragment of model.fragments.values()) {
+        if (fragment.ids?.has(ifcId) && fragment.mesh) {
+          return fragment.mesh;
+        }
+      }
+    }
+  } catch (error) {
+    // Silent fail for missing fragments
+  }
+
+  return null;
+};
+
+// Initialize layer assignment when model is loaded
 watch(
   () => ifcStore.isLoaded,
-  (newValue) => {
-    if (newValue) {
-      initRenderer();
+  async (isLoaded) => {
+    if (isLoaded && plansManagerStore.isInitialized) {
+      // Delay to ensure model is fully processed
+      setTimeout(initializeGeometryAndLayers, 1500);
     }
-  }
+  },
+  { immediate: true }
 );
 
 onUnmounted(() => {
@@ -501,13 +643,66 @@ const stopVerticalResize = () => {
   }
 };
 
-// Expose methods for external control
+/**
+ * Add a new object to a specific layer
+ * @param object - Three.js object to add
+ * @param layer - Layer number (0 = base, 1 = layer 1, 2 = layer 2)
+ */
+const addObjectToLayer = (object: THREE.Object3D, layer: number) => {
+  object.layers.set(layer);
+  console.log(`🎯 Added object to layer ${layer}:`, object.name || object.type);
+
+  // Add to scene if not already added
+  const scene = useThree().scene;
+  if (!object.parent) {
+    scene.add(object);
+  }
+
+  // Force render update
+  const { render } = useThree();
+  render(true);
+};
+
+/**
+ * Create a test object for layer testing
+ * @param layer - Layer number to assign the object to
+ * @param position - Position for the test object
+ */
+const createTestObjectOnLayer = (layer: number, position: THREE.Vector3) => {
+  // Create a simple colored cube for testing
+  const geometry = new THREE.BoxGeometry(2, 2, 2);
+  const colors = [
+    0x808080, // Layer 0 - Gray (base)
+    0xff4444, // Layer 1 - Red
+    0x4444ff, // Layer 2 - Blue
+  ];
+
+  const material = new THREE.MeshBasicMaterial({
+    color: colors[layer] || 0x888888,
+    transparent: true,
+    opacity: 0.8,
+  });
+
+  const cube = new THREE.Mesh(geometry, material);
+  cube.position.copy(position);
+  cube.name = `Test_Layer_${layer}`;
+
+  addObjectToLayer(cube, layer);
+
+  return cube;
+};
+
+// Expose methods for external control and layer management
 defineExpose({
   viewports,
   display,
   handleDisplayChange: (value: boolean) => {
     display.value = value;
   },
+  // Layer management methods
+  addObjectToLayer,
+  createTestObjectOnLayer,
+  getViewportByIndex: (index: number) => viewports.value[index],
 });
 </script>
 
@@ -546,6 +741,34 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.viewport-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.viewport-label {
+  position: absolute;
+  top: 10px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #444;
+  backdrop-filter: blur(4px);
+}
+
+.label-text {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .resize-handle {
