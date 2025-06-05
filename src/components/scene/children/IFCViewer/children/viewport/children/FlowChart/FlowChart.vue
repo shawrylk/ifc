@@ -184,6 +184,7 @@
           placeholder="Flow Chart Name"
           @blur="autoSave"
         />
+        <div v-if="hasUnsavedChanges" class="unsaved-indicator" title="Unsaved changes">●</div>
       </div>
     </div>
 
@@ -278,6 +279,7 @@ const selectedNodes = ref<Node<NodeData>[]>([]);
 const selectedNodeIds = ref(new Set<string>());
 const showHelpText = ref(true);
 const showLoadDialog = ref(false);
+const hasUnsavedChanges = ref(false);
 
 // Range selection state - using screen coordinates
 const isRangeSelecting = ref(false);
@@ -869,6 +871,8 @@ watch(
   [nodes, edges],
   ([newNodes, newEdges]) => {
     flowChartStore.updateCurrentState(newNodes, newEdges);
+    // Mark as unsaved when changes are made
+    hasUnsavedChanges.value = true;
   },
   { deep: true }
 );
@@ -915,10 +919,12 @@ if (flowChartStore.currentNodes.length > 0 || flowChartStore.currentEdges.length
   edges.value = [...flowChartStore.currentEdges];
   // Ensure all loaded nodes have colors
   ensureNodeColors();
+  hasUnsavedChanges.value = false; // Mark as saved when loading existing data
 } else if (!flowChartStore.currentFlowChartId) {
   // If no flow chart exists, create a default one
   const defaultName = `Flow Chart ${new Date().toLocaleDateString()}`;
   flowChartStore.createNewFlowChart(defaultName);
+  hasUnsavedChanges.value = false; // New flowchart starts as saved
 }
 
 // Expose methods for parent component
@@ -1218,11 +1224,13 @@ const onGlobalMouseUp = () => {
 // Flow chart store operations
 const saveCurrentFlowChart = () => {
   flowChartStore.saveCurrentFlowChart();
+  hasUnsavedChanges.value = false;
 };
 
 const autoSave = () => {
   if (flowChartStore.currentFlowChartId) {
     flowChartStore.saveCurrentFlowChart(flowChartStore.currentName);
+    hasUnsavedChanges.value = false;
   }
 };
 
@@ -1232,6 +1240,7 @@ const createNew = () => {
   nodes.value = [];
   edges.value = [];
   showLoadDialog.value = false;
+  hasUnsavedChanges.value = false;
 };
 
 const loadSelectedFlowChart = (chart: any) => {
@@ -1248,6 +1257,7 @@ const loadSelectedFlowChart = (chart: any) => {
       edges.value = [...flowChartStore.currentEdges];
       // Ensure all loaded nodes have colors
       ensureNodeColors();
+      hasUnsavedChanges.value = false;
     }
   }
   showLoadDialog.value = false;
@@ -1880,6 +1890,9 @@ const adjustColorBrightness = (color: string, percent: number): string => {
   border: 1px solid #4a5568;
   border-radius: 6px;
   padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .name-input {
@@ -1900,6 +1913,27 @@ const adjustColorBrightness = (color: string, percent: number): string => {
 
 .name-input::placeholder {
   color: #a0aec0;
+}
+
+.unsaved-indicator {
+  color: #f56565;
+  font-size: 16px;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* Load Dialog */
