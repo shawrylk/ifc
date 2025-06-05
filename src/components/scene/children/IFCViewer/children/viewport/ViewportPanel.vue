@@ -72,6 +72,10 @@ const props = defineProps<{
   size?: { width: number; height: number };
 }>();
 
+const emit = defineEmits<{
+  (e: 'planChanged', planId: number | null): void;
+}>();
+
 const BOTTOM_PANEL_HEIGHT = 550;
 const display = defineModel<boolean>('display', { default: false });
 const position = ref(props.position ?? { x: 10, y: 10 });
@@ -390,6 +394,8 @@ watch(
       await Promise.all(
         viewports.value.map((viewport) => planViewsAndSpaces.value?.goToPlan(newPlanId, viewport))
       );
+      // Emit plan change event for external components (like X-Ray manager)
+      emit('planChanged', newPlanId);
     }
   }
 );

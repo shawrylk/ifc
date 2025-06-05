@@ -4,6 +4,7 @@
       ref="viewportPanel"
       v-model:position="viewportPanelPosition"
       v-model:size="viewportPanelSize"
+      @planChanged="handlePlanChanged"
     />
     <PropertiesPanel ref="propertiesPanel" v-model:position="propertiesPanelPosition" />
     <ObjectTreePanel
@@ -14,6 +15,7 @@
     <PlanViewsPanel ref="planViewsPanel" v-model:position="planViewsPanelPosition" />
     <CategoryFilterPanel ref="categoryFilterPanel" v-model:position="categoryFilterPanelPosition" />
     <ViewerControls
+      ref="viewerControls"
       :objectTreePanel="objectTreePanel"
       :propertiesPanel="propertiesPanel"
       :planViewsPanel="planViewsPanel"
@@ -44,6 +46,7 @@ const propertiesPanel = ref<InstanceType<typeof PropertiesPanel> | null>(null);
 const planViewsPanel = ref<InstanceType<typeof PlanViewsPanel> | null>(null);
 const categoryFilterPanel = ref<InstanceType<typeof CategoryFilterPanel> | null>(null);
 const viewportPanel = ref<InstanceType<typeof ViewportPanel> | null>(null);
+const viewerControls = ref<InstanceType<typeof ViewerControls> | null>(null);
 
 const treePanelPosition = ref({ x: 40, y: 0 });
 const treePanelSize = ref({ width: 320, height: 400 });
@@ -69,6 +72,13 @@ const handleDoubleClick = () => {
   const currentModel = fragmentsModels?.models.list.values().next().value;
   if (!currentModel) return;
   mainViewport.controls.fitToSphere(currentModel.box.getBoundingSphere(new THREE.Sphere()), true);
+};
+
+// Handle plan visibility changes from ViewportPanel
+const handlePlanChanged = (planId: number | null) => {
+  if (viewerControls.value) {
+    viewerControls.value.handlePlanVisibilityChange(planId);
+  }
 };
 
 defineExpose({

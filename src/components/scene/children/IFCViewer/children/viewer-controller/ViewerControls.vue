@@ -15,8 +15,19 @@
     <IconButton title="Category Filter" @click="handleCategoryFilterOpen">
       <i class="pi pi-filter"></i>
     </IconButton>
-    <IconButton title="X-Ray" @click.prevent="handleXRayOpen" :disabled="!ifcStore.isLoaded">
-      <i class="pi" :class="{ 'pi-eye-slash': !enableXRay, 'pi-eye': enableXRay }"></i>
+    <IconButton
+      :title="xrayStore.isForced ? 'X-Ray (Auto-enabled for plan view)' : 'X-Ray'"
+      @click.prevent="handleXRayOpen"
+      :disabled="!ifcStore.isLoaded || xrayStore.isForced"
+    >
+      <i
+        class="pi"
+        :class="{
+          'pi-eye-slash': !enableXRay,
+          'pi-eye': enableXRay,
+          forced: xrayStore.isForced,
+        }"
+      ></i>
     </IconButton>
     <IconButton title="Show Viewports" @click="handleShowViewports">
       <i class="pi pi-building"></i>
@@ -32,11 +43,11 @@ import PropertiesPanel from '../properties-panel/PropertiesPanel.vue';
 import PlanViewsPanel from '../plan-views-panel/PlanViewsPanel.vue';
 import CategoryFilterPanel from '../category-filter-panel/CategoryFilterPanel.vue';
 import { useIFCStore } from '@/stores/ifcStore';
-import { onUnmounted, ref } from 'vue';
-import * as THREE from 'three';
+import { useXRayStore } from '@/stores/xrayStore';
+import { onUnmounted, ref, watch, computed } from 'vue';
 import debounce from 'lodash/debounce';
-import { useThree } from '@/stores/threeStore';
 import ViewportPanel from '../viewport/ViewportPanel.vue';
+import { PlansManager } from '@/composables/PlansManager';
 
 const props = defineProps<{
   objectTreePanel: InstanceType<typeof ObjectTreePanel> | null;
@@ -46,29 +57,41 @@ const props = defineProps<{
   viewportPanel: InstanceType<typeof ViewportPanel> | null;
 }>();
 
-const { render } = useThree();
 const ifcStore = useIFCStore();
+const xrayStore = useXRayStore();
 const { loadIFCFile, dispose } = ifcStore;
-const enableXRay = ref(false);
+const enableXRay = computed(() => xrayStore.isEnabled);
+const plansManager = ref<PlansManager | null>(null);
+
+// Initialize XRayManager when IFC is loaded
+const initializeXRayManager = async () => {
+  const fragmentsModels = ifcStore.getFragmentsModels();
+  if (!fragmentsModels) return;
+
+  // Create PlansManager instance
+  const manager = new PlansManager(fragmentsModels);
+  plansManager.value = manager;
+
+  // Initialize XRayStore with the PlansManager
+  await xrayStore.initialize(fragmentsModels, manager);
+};
+
+// Watch for IFC loading state
+watch(
+  () => ifcStore.isLoaded,
+  async (isLoaded) => {
+    if (isLoaded) {
+      await initializeXRayManager();
+    } else {
+      // Clean up when IFC is unloaded
+      xrayStore.dispose();
+      plansManager.value = null;
+    }
+  }
+);
 
 const handleXRayOpen = debounce(() => {
-  const fragmentsModels = ifcStore.getFragmentsModels();
-  fragmentsModels?.models.list.forEach((model) => {
-    model.object.children.forEach((child) => {
-      if (child instanceof THREE.LineSegments && child.name === 'wireframe') {
-        const newMaterial = new THREE.LineBasicMaterial({ color: 0x878787 });
-        newMaterial.depthTest = !child.material.depthTest;
-        newMaterial.depthWrite = !child.material.depthWrite;
-        enableXRay.value = !enableXRay.value;
-        child.material = newMaterial;
-        if (child instanceof THREE.LineSegments) {
-          child.material = newMaterial;
-          child.material.needsUpdate = true;
-        }
-      }
-    });
-  });
-  render(true);
+  xrayStore.toggleXRay();
 }, 100);
 
 const handleFileUpload = debounce(async (event: Event) => {
@@ -109,8 +132,18 @@ const handleShowViewports = debounce(() => {
   }
 }, 100);
 
+// Method to handle plan visibility changes from external components
+const handlePlanVisibilityChange = (planId: number | null) => {
+  xrayStore.updateStoreyWireframeVisibility(planId);
+};
+
 onUnmounted(() => {
   dispose();
+});
+
+// Expose methods for parent components
+defineExpose({
+  handlePlanVisibilityChange,
 });
 </script>
 
@@ -127,5 +160,10 @@ onUnmounted(() => {
 
 .controls-buttons :deep(.pi) {
   font-size: 1.5rem;
+}
+
+.controls-buttons :deep(.pi.forced) {
+  color: #ffa500 !important; /* Orange color when forced by plan view */
+  opacity: 0.8;
 }
 </style>
