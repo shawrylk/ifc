@@ -44,8 +44,7 @@ import PlanViewsPanel from '../plan-views-panel/PlanViewsPanel.vue';
 import CategoryFilterPanel from '../category-filter-panel/CategoryFilterPanel.vue';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useXRayStore } from '@/stores/xrayStore';
-import { usePlansManagerStore } from '@/stores/plansManagerStore';
-import { onUnmounted, ref, watch, computed } from 'vue';
+import { onUnmounted, watch, computed } from 'vue';
 import debounce from 'lodash/debounce';
 import ViewportPanel from '../viewport/ViewportPanel.vue';
 
@@ -59,7 +58,6 @@ const props = defineProps<{
 
 const ifcStore = useIFCStore();
 const xrayStore = useXRayStore();
-const plansManagerStore = usePlansManagerStore();
 const { loadIFCFile, dispose } = ifcStore;
 const enableXRay = computed(() => xrayStore.isEnabled);
 

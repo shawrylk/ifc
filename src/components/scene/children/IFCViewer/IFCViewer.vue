@@ -41,7 +41,7 @@ import PlanViewsPanel from './children/plan-views-panel/PlanViewsPanel.vue';
 import CategoryFilterPanel from './children/category-filter-panel/CategoryFilterPanel.vue';
 import ViewerControls from './children/viewer-controller/ViewerControls.vue';
 import ProcessingProgress from '@/components/commons/ProcessingProgress.vue';
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useIFCContainer } from '@/composables/useIFCContainer';
 import { useIFCStore } from '@/stores/ifcStore';
 import { useXRayStore } from '@/stores/xrayStore';

@@ -1840,37 +1840,44 @@ const adjustColorBrightness = (color: string, percent: number): string => {
 }
 
 .control-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
+  background: #2d3748;
+  color: #e2e8f0;
+  border: 1px solid #4a5568;
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .control-btn:hover {
+  background: #4a5568;
+  color: white;
+  border-color: #667eea;
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .save-btn:hover {
-  background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
+  background: #38a169;
+  border-color: #48bb78;
 }
 
 .load-btn:hover {
-  background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%);
+  background: #3182ce;
+  border-color: #4299e1;
 }
 
 .new-btn:hover {
-  background: linear-gradient(135deg, #ff9800 0%, #ffb74d 100%);
+  background: #dd6b20;
+  border-color: #ed8936;
 }
 
 .flow-chart-name {
-  background: rgba(0, 0, 0, 0.7);
+  background: #2d3748;
+  border: 1px solid #4a5568;
   border-radius: 6px;
   padding: 4px;
 }
@@ -1878,7 +1885,7 @@ const adjustColorBrightness = (color: string, percent: number): string => {
 .name-input {
   background: transparent;
   border: none;
-  color: white;
+  color: #e2e8f0;
   padding: 4px 8px;
   font-size: 14px;
   font-weight: 500;
@@ -1887,12 +1894,12 @@ const adjustColorBrightness = (color: string, percent: number): string => {
 
 .name-input:focus {
   outline: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
 .name-input::placeholder {
-  color: #aaa;
+  color: #a0aec0;
 }
 
 /* Load Dialog */
