@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { Node, Edge } from '@vue-flow/core';
+import { roomMerger } from '@/utils/roomMerger';
 
 interface RoomData {
   id: string;
@@ -78,6 +79,9 @@ export const useFlowChartStore = defineStore('flowChartStore', () => {
     currentName.value = flowChart.name;
     currentFlowChartId.value = flowChartId;
 
+    // Set this flow chart as the active one in room merger
+    roomMerger.setActiveChart(flowChartId);
+
     console.log(`📂 Flow chart loaded: "${flowChart.name}" (ID: ${flowChartId})`);
     return true;
   };
@@ -106,6 +110,9 @@ export const useFlowChartStore = defineStore('flowChartStore', () => {
 
     savedFlowCharts.value.set(flowChartId, flowChartState);
 
+    // Set this flow chart as the active one in room merger
+    roomMerger.setActiveChart(flowChartId);
+
     console.log(`✨ New flow chart created: "${name}" (ID: ${flowChartId})`);
     return flowChartId;
   };
@@ -121,6 +128,10 @@ export const useFlowChartStore = defineStore('flowChartStore', () => {
     }
 
     const flowChartName = flowChart.name;
+
+    // Delete associated merged rooms from room merger
+    roomMerger.deleteChart(flowChartId);
+
     savedFlowCharts.value.delete(flowChartId);
 
     // If we're deleting the current flow chart, clear the current state
@@ -129,6 +140,9 @@ export const useFlowChartStore = defineStore('flowChartStore', () => {
       currentEdges.value = [];
       currentName.value = 'Untitled Flow Chart';
       currentFlowChartId.value = null;
+
+      // Clear active chart in room merger
+      roomMerger.setActiveChart(null);
     }
 
     console.log(`🗑️ Flow chart deleted: "${flowChartName}" (ID: ${flowChartId})`);

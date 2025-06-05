@@ -1,5 +1,11 @@
 <template>
-  <div class="flow-chart">
+  <div
+    class="flow-chart"
+    @mousedown="onMouseDown"
+    @mousemove="onMouseMove"
+    @mouseup="onMouseUp"
+    @mouseleave="onMouseLeave"
+  >
     <!-- SVG arrow markers definition -->
     <svg style="position: absolute; width: 0; height: 0">
       <defs>
@@ -18,9 +24,11 @@
       :fit-view-on-init="true"
       :class="['vue-flow-container', { 'drag-over': isDragOver }]"
       :nodes-selectable="true"
-      :selection-key-code="true"
+      :selection-key-code="false"
       :select-nodes-on-drag="false"
-      :pan-on-drag="[1, 2]"
+      :pan-on-drag="isRangeSelecting ? [] : [1, 2]"
+      :connect-on-click="false"
+      :nodes-connectable="true"
       @drop="onDrop"
       @dragover="onDragOver"
       @dragleave="onDragLeave"
@@ -29,6 +37,10 @@
       @edges-change="onEdgesChange"
       @selection-change="onSelectionChange"
       @contextmenu="onContextMenu"
+      @pane-click="onPaneClick"
+      @connect="onConnect"
+      @connect-start="onConnectStart"
+      @connect-end="onConnectEnd"
     >
       <Background />
       <Controls :show-zoom="false" />
@@ -49,17 +61,20 @@
       <div v-if="selectedNodes.length > 0" class="selection-info">
         <div class="selection-text">
           {{ selectedNodes.length }} node{{ selectedNodes.length !== 1 ? 's' : '' }} selected
-          <span v-if="canGroupSelectedNodes">(Right-click to group & connect with arrows)</span>
+          <span v-if="canGroupSelectedNodes">(Right-click to group & connect)</span>
+          <span v-else-if="selectedNodes.length === 1">(Click again to deselect)</span>
+          <span v-else-if="selectedNodes.length > 1">(Need 2+ compatible nodes to group)</span>
         </div>
       </div>
 
       <!-- Custom Room Node -->
-      <template #node-room="{ data }">
+      <template #node-room="{ data, id }">
         <div
           class="room-node"
           :class="{
             'functional-room': data.isFunctionalRoom,
             [`level-${data.roomLevel || 0}`]: true,
+            'custom-selected': isNodeSelected(id),
           }"
         >
           <!-- Connection handles -->
@@ -82,7 +97,16 @@
 
       <!-- Custom Functional Group Node -->
       <template #node-functional="{ data, id }">
-        <div class="functional-node" :class="[`level-${data.roomLevel || 1}`]">
+        <div
+          class="functional-node"
+          :class="[`level-${data.roomLevel || 1}`, { 'custom-selected': isNodeSelected(id) }]"
+          :style="{
+            background: data.color
+              ? `linear-gradient(135deg, ${data.color} 0%, ${adjustColorBrightness(data.color, -20)} 100%)`
+              : undefined,
+            borderColor: data.color ? adjustColorBrightness(data.color, 20) : undefined,
+          }"
+        >
           <!-- Connection handles -->
           <Handle id="left" type="target" :position="Position.Left" class="node-handle" />
           <Handle id="right" type="source" :position="Position.Right" class="node-handle" />
@@ -99,7 +123,10 @@
           <div class="functional-content">
             <div class="room-count">{{ data.roomCount || 0 }} rooms</div>
             <div v-if="data.totalArea" class="total-area">{{ data.totalArea }}</div>
-            <div v-if="data.mergedMeshId" class="mesh-info">Merged Geometry</div>
+            <div v-if="data.mergedMeshId" class="mesh-info">
+              <span class="mesh-indicator" :style="{ backgroundColor: data.color }"></span>
+              Merged Geometry
+            </div>
           </div>
         </div>
       </template>
@@ -119,15 +146,23 @@
           <span class="menu-icon">🗑️</span>
           Delete Selected
         </div>
-        <div class="context-menu-item" @click="clearSelection">
-          <span class="menu-icon">❌</span>
-          Clear Selection
-        </div>
       </div>
 
       <!-- Selection overlay -->
       <div v-if="showContextMenu" class="context-menu-overlay" @click="hideContextMenu"></div>
     </VueFlow>
+
+    <!-- Range selection rectangle - positioned relative to flow-chart container -->
+    <div
+      v-if="isRangeSelecting"
+      class="range-selection-rect"
+      :style="{
+        left: selectionRectDisplay.left + 'px',
+        top: selectionRectDisplay.top + 'px',
+        width: selectionRectDisplay.width + 'px',
+        height: selectionRectDisplay.height + 'px',
+      }"
+    ></div>
 
     <!-- Flow Chart Controls -->
     <div class="flow-chart-controls">
@@ -186,8 +221,8 @@
     <!-- Helper text at bottom -->
     <div v-if="showHelpText && nodes.length > 0" class="help-text-bottom">
       <div class="help-content">
-        💡 Drag rooms from the left panel to create nodes • Ctrl+Click to select multiple •
-        Right-click to group & connect
+        💡 Drag rooms to create nodes • Click to select/deselect • Drag empty space for range
+        selection • Drag from handles to connect/group • Delete key to remove • Right-click to group
         <button @click="showHelpText = false" class="help-close">×</button>
       </div>
     </div>
@@ -195,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { VueFlow, useVueFlow, Position } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
@@ -203,6 +238,7 @@ import { Handle } from '@vue-flow/core';
 import type { Node, Edge } from '@vue-flow/core';
 import { roomMerger } from '@/utils/roomMerger';
 import { useFlowChartStore } from '@/stores/flowChartStore';
+import { ContrastingColorGenerator } from '@/utils/contrastingColorGenerator';
 
 interface RoomData {
   id: string;
@@ -221,6 +257,7 @@ interface NodeData {
   area?: string;
   roomLevel?: number; // Track the room hierarchy level (1, 2, 3)
   mergedMeshId?: string; // Reference to the merged Three.js mesh
+  color?: string; // Color for visual consistency with 3D merged rooms
 }
 
 const { addNodes, addEdges, removeNodes, updateNode, getNode, getNodes, project } = useVueFlow();
@@ -228,17 +265,46 @@ const { addNodes, addEdges, removeNodes, updateNode, getNode, getNodes, project 
 // Use flow chart store
 const flowChartStore = useFlowChartStore();
 
+// Color generator for consistent node and merged room colors
+const colorGenerator = new ContrastingColorGenerator();
+const colorIterator = colorGenerator.generate();
+
 const nodes = ref<Node<NodeData>[]>([]);
 const edges = ref<Edge[]>([]);
 const isDragOver = ref(false);
 const showContextMenu = ref(false);
 const contextMenuPosition = ref({ x: 0, y: 0 });
 const selectedNodes = ref<Node<NodeData>[]>([]);
+const selectedNodeIds = ref(new Set<string>());
 const showHelpText = ref(true);
 const showLoadDialog = ref(false);
 
+// Range selection state - using screen coordinates
+const isRangeSelecting = ref(false);
+const justFinishedRangeSelection = ref(false);
+const rangeSelection = ref({
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+  currentY: 0,
+});
+
 // Computed properties for saved flow charts
 const savedFlowCharts = computed(() => flowChartStore.getAllFlowCharts());
+
+// Computed property to check if a node is selected
+const isNodeSelected = computed(() => (nodeId: string) => {
+  const result = selectedNodeIds.value.has(nodeId);
+  return result;
+});
+
+// Simple reactive coordinates for selection rectangle display
+const selectionRectDisplay = ref({
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+});
 
 let nodeId = 0;
 const getNodeId = () => `node_${++nodeId}`;
@@ -380,8 +446,8 @@ const createRoomNode = (room: RoomData, position: { x: number; y: number }) => {
       rooms: [room],
       roomLevel: 0, // Default IFCSPACE rooms are level 0
     },
-    sourcePosition: Position.Left,
-    targetPosition: Position.Right,
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
   };
 
   addNodes([newNode]);
@@ -403,15 +469,24 @@ const createFunctionalGroup = async (
     y: position.y - 60, // Half of typical functional node height (120px)
   };
 
+  // Generate a consistent color for this functional group
+  const nodeColor = colorIterator.next().value;
+  const colorString = nodeColor.rgbString;
+
   // Create merged geometry using room merger directly
   let mergedMeshId: string | undefined;
   if (rooms.length > 0) {
     try {
       const roomIds = rooms.map((room) => room.localId);
-      const mergedMesh = await roomMerger.createMergedRoomGeometry(roomIds, level);
+      const chartId = flowChartStore.currentFlowChartId || 'default';
+      const mergedMesh = await roomMerger.createMergedRoomGeometry(
+        roomIds,
+        level,
+        chartId,
+        colorString
+      );
       if (mergedMesh) {
         mergedMeshId = mergedMesh.name;
-        console.log(`✅ Created merged geometry for functional group level ${level + 1}`);
       }
     } catch (error) {
       console.error('Failed to create merged geometry:', error);
@@ -430,9 +505,10 @@ const createFunctionalGroup = async (
       totalArea: `${totalArea.toFixed(2)} m²`,
       roomLevel: level,
       mergedMeshId,
+      color: colorString,
     },
-    sourcePosition: Position.Left,
-    targetPosition: Position.Right,
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
   };
 
   addNodes([newNode]);
@@ -482,23 +558,22 @@ const updateNodeLabel = (nodeId: string, newLabel: string) => {
 };
 
 const onNodeClick = (event: any) => {
-  // Handle selection on node click
+  // Handle selection on node click - always toggle selection
   const node = event.node;
-  const isCtrlPressed = event.event?.ctrlKey || event.event?.metaKey;
+  const isSelected = selectedNodeIds.value.has(node.id);
 
-  if (isCtrlPressed) {
-    // Toggle selection
-    const isSelected = selectedNodes.value.some((n) => n.id === node.id);
-    if (isSelected) {
-      // Remove from selection
-      selectedNodes.value = selectedNodes.value.filter((n) => n.id !== node.id);
-    } else {
-      // Add to selection
-      selectedNodes.value = [...selectedNodes.value, node];
-    }
+  if (isSelected) {
+    // Remove from selection (deselect)
+    const newSet = new Set(selectedNodeIds.value);
+    newSet.delete(node.id);
+    selectedNodeIds.value = newSet;
+    selectedNodes.value = selectedNodes.value.filter((n) => n.id !== node.id);
   } else {
-    // Single selection or clear selection
-    selectedNodes.value = [node];
+    // Add to selection (select)
+    const newSet = new Set(selectedNodeIds.value);
+    newSet.add(node.id);
+    selectedNodeIds.value = newSet;
+    selectedNodes.value = [...selectedNodes.value, node];
   }
 
   emit('nodeClick', event.node.data);
@@ -510,6 +585,188 @@ const onNodesChange = (_changes: any) => {
 
 const onEdgesChange = (_changes: any) => {
   // Handle edge changes if needed
+};
+
+// Handle connection events for dragging from handles
+const onConnect = (params: any) => {
+  // Get source and target node IDs from the connection params
+  const sourceNodeId = params.source;
+  const targetNodeId = params.target;
+
+  if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+    return false; // Prevent default edge creation
+  }
+
+  // Get both nodes
+  const sourceNode = getNode.value(sourceNodeId);
+  const targetNode = getNode.value(targetNodeId);
+
+  if (!sourceNode || !targetNode) {
+    return false; // Prevent default edge creation
+  }
+
+  // Handle different connection scenarios
+  if (targetNode.type === 'functional') {
+    // Target is a functional group - add source node's room data to it
+    addNodeToFunctionalGroup(sourceNode, targetNode);
+  } else if (sourceNode.type === 'room' && targetNode.type === 'room') {
+    // Both are room nodes - create a new functional group with both
+    createFunctionalGroupFromConnection(sourceNode, targetNode);
+  } else {
+    // Default behavior - create an edge connection
+    connectNodes(sourceNodeId, targetNodeId);
+    return true; // Allow default edge creation
+  }
+
+  return false; // Prevent default edge creation for our custom logic
+};
+
+const onConnectStart = () => {
+  // Called when starting to drag from a handle
+  // Store the source node info for later use if needed
+};
+
+const onConnectEnd = () => {
+  // Called when ending a connection drag
+  // Most of our logic is now handled in onConnect
+};
+
+// Add a node's room data to an existing functional group
+const addNodeToFunctionalGroup = async (sourceNode: Node<NodeData>, targetNode: Node<NodeData>) => {
+  if (!sourceNode.data || !targetNode.data) return;
+
+  let roomsToAdd: RoomData[] = [];
+
+  // Extract room data from source node
+  if (sourceNode.type === 'room') {
+    roomsToAdd = [
+      {
+        id: sourceNode.id,
+        name: sourceNode.data.label,
+        localId: sourceNode.data.localId || 0,
+        area: sourceNode.data.area,
+      },
+    ];
+  } else if (sourceNode.type === 'functional' && sourceNode.data.rooms) {
+    roomsToAdd = [...sourceNode.data.rooms];
+  }
+
+  if (roomsToAdd.length === 0) return;
+
+  // Check for duplicates
+  const existingRooms = targetNode.data.rooms || [];
+  const newRooms = roomsToAdd.filter(
+    (newRoom) => !existingRooms.some((existingRoom) => existingRoom.localId === newRoom.localId)
+  );
+
+  if (newRooms.length === 0) {
+    // Show duplicate warning
+    showDuplicateWarning('Room(s)', 0);
+    return;
+  }
+
+  // Combine rooms
+  const updatedRooms = [...existingRooms, ...newRooms];
+  const totalArea = updatedRooms.reduce((sum: number, room: RoomData) => {
+    const area = parseFloat(room.area?.replace(/[^\d.]/g, '') || '0');
+    return sum + area;
+  }, 0);
+
+  // Update target functional group
+  updateNode(targetNode.id, {
+    data: {
+      ...targetNode.data,
+      rooms: updatedRooms,
+      roomCount: updatedRooms.length,
+      totalArea: `${totalArea.toFixed(2)} m²`,
+    },
+  });
+
+  // Create connection edge
+  connectNodes(sourceNode.id, targetNode.id);
+
+  // Update merged geometry if needed
+  try {
+    const roomIds = updatedRooms.map((room) => room.localId);
+    const level = targetNode.data.roomLevel || 1;
+    const chartId = flowChartStore.currentFlowChartId || 'default';
+    const color = targetNode.data.color || colorIterator.next().value.rgbString;
+
+    const mergedMesh = await roomMerger.createMergedRoomGeometry(roomIds, level, chartId, color);
+
+    if (mergedMesh) {
+      updateNode(targetNode.id, {
+        data: {
+          ...targetNode.data,
+          mergedMeshId: mergedMesh.name,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('Failed to update merged geometry:', error);
+  }
+};
+
+// Create a new functional group from two connected room nodes
+const createFunctionalGroupFromConnection = async (
+  sourceNode: Node<NodeData>,
+  targetNode: Node<NodeData>
+) => {
+  if (!sourceNode.data || !targetNode.data) return;
+
+  const roomsToGroup: RoomData[] = [];
+
+  // Add source room
+  if (sourceNode.type === 'room') {
+    roomsToGroup.push({
+      id: sourceNode.id,
+      name: sourceNode.data.label,
+      localId: sourceNode.data.localId || 0,
+      area: sourceNode.data.area,
+    });
+  }
+
+  // Add target room
+  if (targetNode.type === 'room') {
+    roomsToGroup.push({
+      id: targetNode.id,
+      name: targetNode.data.label,
+      localId: targetNode.data.localId || 0,
+      area: targetNode.data.area,
+    });
+  }
+
+  if (roomsToGroup.length < 2) return;
+
+  // Position the new functional group between the two nodes
+  const midX = (sourceNode.position.x + targetNode.position.x) / 2;
+  const midY = (sourceNode.position.y + targetNode.position.y) / 2;
+  const position = { x: midX, y: midY };
+
+  // Determine the level (increment from the highest of the two nodes)
+  const sourceLevel = sourceNode.data?.roomLevel || 0;
+  const targetLevel = targetNode.data?.roomLevel || 0;
+  const newLevel = Math.min(Math.max(sourceLevel, targetLevel) + 1, 2);
+
+  try {
+    // Create functional group
+    const functionalNodeId = await createFunctionalGroup(roomsToGroup, position, newLevel);
+
+    // Connect both original nodes to the new functional group
+    connectNodes(sourceNode.id, functionalNodeId);
+    connectNodes(targetNode.id, functionalNodeId);
+  } catch (error) {
+    console.error('Failed to create functional group from connection:', error);
+  }
+};
+
+// Handle clicking on empty space to clear selection
+const onPaneClick = () => {
+  if (!isRangeSelecting.value && !justFinishedRangeSelection.value) {
+    selectedNodeIds.value = new Set();
+    selectedNodes.value = [];
+  }
+  hideContextMenu();
 };
 
 // Connect nodes with edges
@@ -598,16 +855,12 @@ const groupSelectedNodes = async () => {
     selectedNodeIds.forEach((nodeId) => {
       connectNodes(nodeId, functionalNodeId);
     });
-
-    console.log(
-      `🔗 Created functional group at level ${newLevel + 1} with ${roomsToGroup.length} rooms`
-    );
   } catch (error) {
     console.error('Failed to create functional group:', error);
   }
 
   // Clear selection and hide context menu
-  clearSelection();
+  selectedNodes.value = [];
   hideContextMenu();
 };
 
@@ -620,10 +873,52 @@ watch(
   { deep: true }
 );
 
+// Watch for current flow chart changes and sync with room merger
+watch(
+  () => flowChartStore.currentFlowChartId,
+  (newChartId) => {
+    if (newChartId) {
+      roomMerger.setActiveChart(newChartId);
+    } else {
+      roomMerger.setActiveChart(null);
+    }
+  },
+  { immediate: true }
+);
+
+// Ensure all functional nodes have colors assigned
+const ensureNodeColors = () => {
+  let hasChanges = false;
+  const updatedNodes = nodes.value.map((node) => {
+    if (node.type === 'functional' && node.data && !node.data.color) {
+      const nodeColor = colorIterator.next().value;
+      hasChanges = true;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          color: nodeColor.rgbString,
+        },
+      } as Node<NodeData>;
+    }
+    return node;
+  });
+
+  if (hasChanges) {
+    nodes.value = updatedNodes;
+  }
+};
+
 // Initialize from store if available
 if (flowChartStore.currentNodes.length > 0 || flowChartStore.currentEdges.length > 0) {
   nodes.value = [...flowChartStore.currentNodes];
   edges.value = [...flowChartStore.currentEdges];
+  // Ensure all loaded nodes have colors
+  ensureNodeColors();
+} else if (!flowChartStore.currentFlowChartId) {
+  // If no flow chart exists, create a default one
+  const defaultName = `Flow Chart ${new Date().toLocaleDateString()}`;
+  flowChartStore.createNewFlowChart(defaultName);
 }
 
 // Expose methods for parent component
@@ -656,6 +951,7 @@ defineExpose({
 // Handle selection changes
 const onSelectionChange = (selection: { nodes: Node<NodeData>[]; edges: Edge[] }) => {
   selectedNodes.value = selection.nodes;
+  selectedNodeIds.value = new Set(selection.nodes.map((node) => node.id));
   // Hide context menu when selection changes
   hideContextMenu();
 };
@@ -689,13 +985,234 @@ const deleteSelectedNodes = () => {
   const nodeIdsToRemove = selectedNodes.value.map((node) => node.id);
   removeNodes(nodeIdsToRemove);
 
-  clearSelection();
+  selectedNodes.value = [];
   hideContextMenu();
 };
 
-const clearSelection = () => {
-  selectedNodes.value = [];
-  hideContextMenu();
+// Handle keyboard shortcuts
+const handleKeyDown = (event: KeyboardEvent) => {
+  // Delete selected nodes with Delete or Backspace key
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodes.value.length > 0) {
+    event.preventDefault();
+    deleteSelectedNodes();
+  }
+};
+
+// Add keyboard and global mouse event listeners
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('mousemove', onGlobalMouseMove);
+  window.addEventListener('mouseup', onGlobalMouseUp);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('mousemove', onGlobalMouseMove);
+  window.removeEventListener('mouseup', onGlobalMouseUp);
+});
+
+// Range selection mouse handlers
+const onMouseDown = (event: MouseEvent) => {
+  // Only start range selection on left mouse button
+  if (event.button !== 0) return;
+
+  // Check if clicking on a node or other interactive element
+  const target = event.target as HTMLElement;
+  if (
+    target.closest('.vue-flow__node') ||
+    target.closest('.context-menu') ||
+    target.closest('.flow-chart-controls') ||
+    target.closest('.vue-flow__handle') ||
+    target.closest('.vue-flow__edge')
+  ) {
+    return;
+  }
+
+  // Get both container bounds for proper coordinate handling
+  const flowContainer = event.currentTarget as HTMLElement;
+  const vueFlowElement = flowContainer.querySelector('.vue-flow') as HTMLElement;
+  if (!vueFlowElement) return;
+
+  const flowContainerRect = flowContainer.getBoundingClientRect();
+  const vueFlowRect = vueFlowElement.getBoundingClientRect();
+
+  // Coordinates relative to flow-chart container (for display)
+  const displayX = event.clientX - flowContainerRect.left;
+  const displayY = event.clientY - flowContainerRect.top;
+
+  // Coordinates relative to vue-flow container (for project function)
+  const vueFlowX = event.clientX - vueFlowRect.left;
+  const vueFlowY = event.clientY - vueFlowRect.top;
+
+  rangeSelection.value.startX = vueFlowX;
+  rangeSelection.value.startY = vueFlowY;
+  rangeSelection.value.currentX = vueFlowX;
+  rangeSelection.value.currentY = vueFlowY;
+
+  // Update display rectangle (relative to flow-chart container)
+  selectionRectDisplay.value = {
+    left: displayX,
+    top: displayY,
+    width: 0,
+    height: 0,
+  };
+
+  isRangeSelecting.value = true;
+  event.preventDefault();
+  event.stopPropagation();
+};
+
+const onMouseMove = (event: MouseEvent) => {
+  if (!isRangeSelecting.value) return;
+
+  const flowContainer = event.currentTarget as HTMLElement;
+  const vueFlowElement = flowContainer.querySelector('.vue-flow') as HTMLElement;
+  if (!vueFlowElement) return;
+
+  const flowContainerRect = flowContainer.getBoundingClientRect();
+  const vueFlowRect = vueFlowElement.getBoundingClientRect();
+
+  // Coordinates relative to flow-chart container (for display)
+  const displayX = event.clientX - flowContainerRect.left;
+  const displayY = event.clientY - flowContainerRect.top;
+
+  // Coordinates relative to vue-flow container (for project function)
+  const vueFlowX = event.clientX - vueFlowRect.left;
+  const vueFlowY = event.clientY - vueFlowRect.top;
+
+  rangeSelection.value.currentX = vueFlowX;
+  rangeSelection.value.currentY = vueFlowY;
+
+  // Calculate display coordinates from stored vue-flow relative coordinates
+  const startDisplayX = rangeSelection.value.startX + (vueFlowRect.left - flowContainerRect.left);
+  const startDisplayY = rangeSelection.value.startY + (vueFlowRect.top - flowContainerRect.top);
+
+  // Update display rectangle (relative to flow-chart container)
+  selectionRectDisplay.value = {
+    left: Math.min(startDisplayX, displayX),
+    top: Math.min(startDisplayY, displayY),
+    width: Math.abs(displayX - startDisplayX),
+    height: Math.abs(displayY - startDisplayY),
+  };
+
+  event.preventDefault();
+};
+
+const onMouseUp = () => {
+  if (!isRangeSelecting.value) return;
+
+  // Calculate selection rectangle bounds in vue-flow coordinates
+  const vueFlowLeft = Math.min(rangeSelection.value.startX, rangeSelection.value.currentX);
+  const vueFlowTop = Math.min(rangeSelection.value.startY, rangeSelection.value.currentY);
+  const vueFlowRight = Math.max(rangeSelection.value.startX, rangeSelection.value.currentX);
+  const vueFlowBottom = Math.max(rangeSelection.value.startY, rangeSelection.value.currentY);
+
+  // Only proceed if there's a meaningful selection area (at least 10px in both dimensions)
+  if (Math.abs(vueFlowRight - vueFlowLeft) < 10 || Math.abs(vueFlowBottom - vueFlowTop) < 10) {
+    isRangeSelecting.value = false;
+    return;
+  }
+
+  // Convert vue-flow coordinates to flow coordinates for comparison
+  const flowTopLeft = project({ x: vueFlowLeft, y: vueFlowTop });
+  const flowBottomRight = project({ x: vueFlowRight, y: vueFlowBottom });
+
+  // Find nodes within the selection rectangle
+  const foundNodeIds: string[] = [];
+  const allNodes = getNodes.value;
+
+  allNodes.forEach((node) => {
+    // Use node position and dimensions directly from Vue Flow
+    const nodePos = node.computedPosition || node.position;
+    const nodeWidth = node.dimensions?.width || (node.type === 'functional' ? 200 : 150);
+    const nodeHeight = node.dimensions?.height || (node.type === 'functional' ? 120 : 100);
+
+    const nodeLeft = nodePos.x;
+    const nodeTop = nodePos.y;
+    const nodeRight = nodeLeft + nodeWidth;
+    const nodeBottom = nodeTop + nodeHeight;
+
+    // Check overlap using flow coordinates
+    if (
+      nodeLeft < flowBottomRight.x &&
+      nodeRight > flowTopLeft.x &&
+      nodeTop < flowBottomRight.y &&
+      nodeBottom > flowTopLeft.y
+    ) {
+      foundNodeIds.push(node.id);
+    }
+  });
+
+  // Update our selection state
+  selectedNodeIds.value = new Set(foundNodeIds);
+  selectedNodes.value = allNodes.filter((node) => foundNodeIds.includes(node.id));
+
+  // Force reactivity update for visual feedback
+  // nextTick(() => {
+  //   foundNodeIds.forEach((nodeId) => {
+  //     const isSelected = isNodeSelected.value(nodeId);
+  //   });
+  // });
+
+  isRangeSelecting.value = false;
+
+  // Set flag to prevent immediate pane click from clearing selection
+  justFinishedRangeSelection.value = true;
+
+  // Clear the flag after a short delay to allow normal pane clicks to work
+  setTimeout(() => {
+    justFinishedRangeSelection.value = false;
+  }, 100);
+};
+
+const onMouseLeave = () => {
+  isRangeSelecting.value = false;
+  justFinishedRangeSelection.value = false;
+};
+
+// Global mouse event handlers for better range selection
+const onGlobalMouseMove = (event: MouseEvent) => {
+  if (!isRangeSelecting.value) return;
+
+  // Find the flow chart container and vue flow element
+  const flowContainer = document.querySelector('.flow-chart') as HTMLElement;
+  if (!flowContainer) return;
+
+  const vueFlowElement = flowContainer.querySelector('.vue-flow') as HTMLElement;
+  if (!vueFlowElement) return;
+
+  const flowContainerRect = flowContainer.getBoundingClientRect();
+  const vueFlowRect = vueFlowElement.getBoundingClientRect();
+
+  // Coordinates relative to flow-chart container (for display)
+  const displayX = event.clientX - flowContainerRect.left;
+  const displayY = event.clientY - flowContainerRect.top;
+
+  // Coordinates relative to vue-flow container (for project function)
+  const vueFlowX = event.clientX - vueFlowRect.left;
+  const vueFlowY = event.clientY - vueFlowRect.top;
+
+  rangeSelection.value.currentX = vueFlowX;
+  rangeSelection.value.currentY = vueFlowY;
+
+  // Calculate display coordinates from stored vue-flow relative coordinates
+  const startDisplayX = rangeSelection.value.startX + (vueFlowRect.left - flowContainerRect.left);
+  const startDisplayY = rangeSelection.value.startY + (vueFlowRect.top - flowContainerRect.top);
+
+  // Update display rectangle (relative to flow-chart container)
+  selectionRectDisplay.value = {
+    left: Math.min(startDisplayX, displayX),
+    top: Math.min(startDisplayY, displayY),
+    width: Math.abs(displayX - startDisplayX),
+    height: Math.abs(displayY - startDisplayY),
+  };
+
+  event.preventDefault();
+};
+
+const onGlobalMouseUp = () => {
+  if (!isRangeSelecting.value) return;
+  onMouseUp();
 };
 
 // Flow chart store operations
@@ -729,6 +1246,8 @@ const loadSelectedFlowChart = (chart: any) => {
     if (success) {
       nodes.value = [...flowChartStore.currentNodes];
       edges.value = [...flowChartStore.currentEdges];
+      // Ensure all loaded nodes have colors
+      ensureNodeColors();
     }
   }
   showLoadDialog.value = false;
@@ -750,6 +1269,38 @@ const deleteChart = (chart: any) => {
 
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleString();
+};
+
+// Utility function to adjust color brightness
+const adjustColorBrightness = (color: string, percent: number): string => {
+  // Convert RGB string to hex if needed
+  let hex = color;
+  if (color.startsWith('rgb')) {
+    const rgbMatch = color.match(/\d+/g);
+    if (rgbMatch) {
+      const r = parseInt(rgbMatch[0]);
+      const g = parseInt(rgbMatch[1]);
+      const b = parseInt(rgbMatch[2]);
+      hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+  }
+
+  // Remove # if present
+  hex = hex.replace('#', '');
+
+  // Parse RGB components
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+
+  // Adjust brightness
+  const factor = 1 + percent / 100;
+  const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+  const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+  const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+
+  // Convert back to hex
+  return `#${((1 << 24) + (newR << 16) + (newG << 8) + newB).toString(16).slice(1)}`;
 };
 </script>
 
@@ -945,6 +1496,17 @@ const formatDate = (dateString: string) => {
   background: rgba(251, 191, 36, 0.2);
   padding: 2px 6px;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mesh-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
 }
 
 /* Vue Flow specific styles */
@@ -1099,20 +1661,37 @@ const formatDate = (dateString: string) => {
   z-index: 999;
 }
 
-/* Selected node styles */
-:deep(.vue-flow__node.selected) {
-  outline: 2px solid #667eea;
-  outline-offset: 2px;
+/* Custom selected node styles - very high specificity */
+.room-node.custom-selected {
+  border: 3px solid #667eea !important;
+  box-shadow:
+    0 0 0 3px rgba(102, 126, 234, 0.4),
+    0 0 20px rgba(102, 126, 234, 0.6) !important;
+  transform: scale(1.02) !important;
+  outline: 3px solid #667eea !important;
+  outline-offset: 2px !important;
+  background: rgba(102, 126, 234, 0.1) !important;
+  z-index: 1000 !important;
+  position: relative !important;
 }
 
-:deep(.vue-flow__node.selected .room-node) {
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+.functional-node.custom-selected {
+  border: 3px solid #667eea !important;
+  box-shadow:
+    0 0 0 3px rgba(102, 126, 234, 0.4),
+    0 0 20px rgba(102, 126, 234, 0.6) !important;
+  transform: scale(1.02) !important;
+  outline: 3px solid #667eea !important;
+  outline-offset: 2px !important;
+  z-index: 1000 !important;
+  position: relative !important;
 }
 
-:deep(.vue-flow__node.selected .functional-node) {
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+/* Force override Vue Flow's default styles */
+:deep(.vue-flow__node) .room-node.custom-selected,
+:deep(.vue-flow__node) .functional-node.custom-selected {
+  border: 3px solid #667eea !important;
+  box-shadow: 0 0 0 5px rgba(102, 126, 234, 0.5) !important;
 }
 
 /* Selection help and info styles */
@@ -1441,31 +2020,111 @@ const formatDate = (dateString: string) => {
   transform: scale(1.1);
 }
 
+/* Range selection rectangle */
+.range-selection-rect {
+  position: absolute;
+  border: 2px dashed #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  pointer-events: none;
+  z-index: 1001;
+  animation: selectionPulse 1s ease-in-out infinite alternate;
+}
+
+/* Range selection debug info */
+.range-selection-debug {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: monospace;
+  z-index: 1002;
+  pointer-events: none;
+}
+
+/* Selection count debug info */
+.selection-count-debug {
+  position: absolute;
+  top: 110px;
+  right: 10px;
+  background: rgba(0, 100, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: monospace;
+  z-index: 1002;
+  pointer-events: none;
+}
+
+@keyframes selectionPulse {
+  0% {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+  }
+  100% {
+    border-color: #4c51bf;
+    background: rgba(102, 126, 234, 0.2);
+  }
+}
+
 /* Node handle styles */
 .node-handle {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   background: #667eea;
   border: 2px solid #fff;
   border-radius: 50%;
+  cursor: grab;
+  transition: all 0.2s ease;
+  opacity: 0.8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .node-handle:hover {
   background: #4c51bf;
-  transform: scale(1.2);
+  transform: scale(1.4);
+  opacity: 1;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+  cursor: grabbing;
 }
 
 /* Vue Flow handle overrides */
 :deep(.vue-flow__handle) {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   background: #667eea;
   border: 2px solid #fff;
   border-radius: 50%;
+  cursor: grab;
+  transition: all 0.2s ease;
+  opacity: 0.8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 :deep(.vue-flow__handle:hover) {
   background: #4c51bf;
+  transform: scale(1.4);
+  opacity: 1;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+  cursor: grabbing;
+}
+
+/* Handle connection line styles */
+:deep(.vue-flow__connection-line) {
+  stroke: #667eea;
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+  opacity: 0.8;
+}
+
+/* Enhance node hover states to show handles better */
+.room-node:hover .node-handle,
+.functional-node:hover .node-handle {
+  opacity: 1;
   transform: scale(1.2);
 }
 </style>
