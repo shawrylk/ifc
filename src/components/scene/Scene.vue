@@ -2,6 +2,7 @@
   <div class="scene">
     <div ref="viewerContainer" class="viewer-container"></div>
     <IFCViewer />
+    <Selection />
   </div>
 </template>
 
@@ -9,6 +10,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useThree } from '@/stores/threeStore';
 import IFCViewer from './children/IFCViewer/IFCViewer.vue';
+import Selection from './children/ThreeUtils/Selection.vue';
 
 const { initialize, handleResize, dispose } = useThree();
 const viewerContainer = ref<HTMLElement | null>(null);
