@@ -141,7 +141,7 @@ watch(
       dims.forEach((dim) => {
         if (dim.val > 0.01) {
           // Only show dimensions that are not tiny
-          const labelText = `${dim.axis.toUpperCase()}: ${dim.val.toFixed(2)}m`;
+          const labelText = `${dim.axis.toUpperCase()}: ${dim.val.toFixed(4)}m`;
           const label = createTextSprite(labelText, dim.pos);
           if (label) {
             dimensionLabels.push(label);
